@@ -17,6 +17,8 @@ const controls = {
   cropBtn: document.querySelector("#cropBtn"),
   resetCropBtn: document.querySelector("#resetCropBtn"),
   squareCrop: document.querySelector("#squareCrop"),
+  cropAngle: document.querySelector("#cropAngle"),
+  resetToolsBtn: document.querySelector("#resetToolsBtn"),
   renderBtn: document.querySelector("#renderBtn"),
   downloadBtn: document.querySelector("#downloadBtn"),
   outWidth: document.querySelector("#outWidth"),
@@ -66,6 +68,8 @@ const state = {
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const lerp = (a, b, t) => a + (b - a) * t;
+const toRad = degrees => degrees * Math.PI / 180;
+const toDeg = radians => radians * 180 / Math.PI;
 
 function sanitizeFileName(name) {
   return name.replace(/\.[^.]+$/, "").replace(/[^a-z0-9-_]+/gi, "-").replace(/^-|-$/g, "") || "scaled-image";
@@ -87,18 +91,20 @@ function getCrop() {
 function makeDefaultCrop() {
   if (!state.image) return null;
   if (!controls.squareCrop.checked) {
-    return { x: 0, y: 0, w: state.image.width, h: state.image.height };
+    return { x: 0, y: 0, w: state.image.width, h: state.image.height, angle: 0 };
   }
   const side = Math.min(state.image.width, state.image.height);
   return {
     x: Math.round((state.image.width - side) / 2),
     y: Math.round((state.image.height - side) / 2),
     w: side,
-    h: side
+    h: side,
+    angle: 0
   };
 }
 
 function resetCrop() {
+  controls.cropAngle.value = 0;
   state.crop = makeDefaultCrop();
   drawSource();
   renderOutput();
@@ -122,7 +128,7 @@ function normalizeCrop(crop) {
   if (h > state.image.height) h = state.image.height;
   x = clamp(x, 0, state.image.width - w);
   y = clamp(y, 0, state.image.height - h);
-  return { x, y, w, h };
+  return { x, y, w, h, angle: normalizeAngle(crop.angle || 0) };
 }
 
 function drawSource() {
@@ -144,45 +150,63 @@ function drawSource() {
 function drawCropOverlay(crop) {
   const c = normalizeCrop(crop);
   const alpha = state.cropMode ? 0.56 : 0.34;
+  const corners = getRotatedCropCorners(c);
   sourceCtx.save();
   sourceCtx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
-  sourceCtx.fillRect(0, 0, sourceCanvas.width, c.y);
-  sourceCtx.fillRect(0, c.y + c.h, sourceCanvas.width, sourceCanvas.height - c.y - c.h);
-  sourceCtx.fillRect(0, c.y, c.x, c.h);
-  sourceCtx.fillRect(c.x + c.w, c.y, sourceCanvas.width - c.x - c.w, c.h);
+  sourceCtx.fillRect(0, 0, sourceCanvas.width, sourceCanvas.height);
+  sourceCtx.globalCompositeOperation = "destination-out";
+  sourceCtx.beginPath();
+  corners.forEach((corner, index) => {
+    if (index === 0) sourceCtx.moveTo(corner.x, corner.y);
+    else sourceCtx.lineTo(corner.x, corner.y);
+  });
+  sourceCtx.closePath();
+  sourceCtx.fill();
+  sourceCtx.globalCompositeOperation = "source-over";
 
   sourceCtx.strokeStyle = "#6ee7b7";
   sourceCtx.lineWidth = handleScale(sourceCanvas) * 2;
   sourceCtx.setLineDash([]);
-  sourceCtx.strokeRect(c.x + 0.5, c.y + 0.5, c.w, c.h);
+  sourceCtx.beginPath();
+  corners.forEach((corner, index) => {
+    if (index === 0) sourceCtx.moveTo(corner.x, corner.y);
+    else sourceCtx.lineTo(corner.x, corner.y);
+  });
+  sourceCtx.closePath();
+  sourceCtx.stroke();
 
   sourceCtx.strokeStyle = "rgba(255, 255, 255, 0.42)";
   sourceCtx.lineWidth = handleScale(sourceCanvas);
   sourceCtx.beginPath();
-  sourceCtx.moveTo(c.x + c.w / 3, c.y);
-  sourceCtx.lineTo(c.x + c.w / 3, c.y + c.h);
-  sourceCtx.moveTo(c.x + (c.w * 2) / 3, c.y);
-  sourceCtx.lineTo(c.x + (c.w * 2) / 3, c.y + c.h);
-  sourceCtx.moveTo(c.x, c.y + c.h / 3);
-  sourceCtx.lineTo(c.x + c.w, c.y + c.h / 3);
-  sourceCtx.moveTo(c.x, c.y + (c.h * 2) / 3);
-  sourceCtx.lineTo(c.x + c.w, c.y + (c.h * 2) / 3);
+  drawLocalCropLine(c, -c.w / 6, -c.h / 2, -c.w / 6, c.h / 2);
+  drawLocalCropLine(c, c.w / 6, -c.h / 2, c.w / 6, c.h / 2);
+  drawLocalCropLine(c, -c.w / 2, -c.h / 6, c.w / 2, -c.h / 6);
+  drawLocalCropLine(c, -c.w / 2, c.h / 6, c.w / 2, c.h / 6);
   sourceCtx.stroke();
 
   if (state.cropMode) {
+    const top = localToWorld(c, 0, -c.h / 2);
+    const rotate = getRotateHandlePoint(c);
+    sourceCtx.strokeStyle = "#6ee7b7";
+    sourceCtx.lineWidth = handleScale(sourceCanvas) * 1.35;
+    sourceCtx.beginPath();
+    sourceCtx.moveTo(top.x, top.y);
+    sourceCtx.lineTo(rotate.x, rotate.y);
+    sourceCtx.stroke();
+
     for (const point of getCropHandlePoints(c)) {
-      drawHandle(sourceCtx, point.x, point.y, sourceCanvas, point.corner);
+      drawHandle(sourceCtx, point.x, point.y, sourceCanvas, point.corner, point.name === "rotate");
     }
   }
   sourceCtx.restore();
 }
 
-function drawHandle(ctx, x, y, canvas, large = true) {
+function drawHandle(ctx, x, y, canvas, large = true, rotate = false) {
   const s = handleScale(canvas);
-  const radius = (large ? 7 : 5) * s;
+  const radius = (rotate ? 8 : large ? 7 : 5) * s;
   ctx.save();
   ctx.fillStyle = "#101114";
-  ctx.strokeStyle = "#6ee7b7";
+  ctx.strokeStyle = rotate ? "#facc15" : "#6ee7b7";
   ctx.lineWidth = 2 * s;
   ctx.beginPath();
   ctx.arc(x, y, radius, 0, Math.PI * 2);
@@ -197,19 +221,66 @@ function handleScale(canvas) {
 }
 
 function getCropHandlePoints(crop) {
-  const { x, y, w, h } = crop;
-  const mx = x + w / 2;
-  const my = y + h / 2;
   return [
-    { name: "nw", x, y, corner: true },
-    { name: "n", x: mx, y, corner: false },
-    { name: "ne", x: x + w, y, corner: true },
-    { name: "e", x: x + w, y: my, corner: false },
-    { name: "se", x: x + w, y: y + h, corner: true },
-    { name: "s", x: mx, y: y + h, corner: false },
-    { name: "sw", x, y: y + h, corner: true },
-    { name: "w", x, y: my, corner: false }
+    { name: "nw", ...localToWorld(crop, -crop.w / 2, -crop.h / 2), corner: true },
+    { name: "n", ...localToWorld(crop, 0, -crop.h / 2), corner: false },
+    { name: "ne", ...localToWorld(crop, crop.w / 2, -crop.h / 2), corner: true },
+    { name: "e", ...localToWorld(crop, crop.w / 2, 0), corner: false },
+    { name: "se", ...localToWorld(crop, crop.w / 2, crop.h / 2), corner: true },
+    { name: "s", ...localToWorld(crop, 0, crop.h / 2), corner: false },
+    { name: "sw", ...localToWorld(crop, -crop.w / 2, crop.h / 2), corner: true },
+    { name: "w", ...localToWorld(crop, -crop.w / 2, 0), corner: false },
+    { name: "rotate", ...getRotateHandlePoint(crop), corner: true }
   ];
+}
+
+function getCropCenter(crop) {
+  return { x: crop.x + crop.w / 2, y: crop.y + crop.h / 2 };
+}
+
+function localToWorld(crop, localX, localY) {
+  const center = getCropCenter(crop);
+  const angle = toRad(crop.angle || 0);
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return {
+    x: center.x + localX * cos - localY * sin,
+    y: center.y + localX * sin + localY * cos
+  };
+}
+
+function worldToLocal(crop, point) {
+  const center = getCropCenter(crop);
+  const angle = toRad(crop.angle || 0);
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const dx = point.x - center.x;
+  const dy = point.y - center.y;
+  return {
+    x: dx * cos + dy * sin,
+    y: -dx * sin + dy * cos
+  };
+}
+
+function getRotatedCropCorners(crop) {
+  return [
+    localToWorld(crop, -crop.w / 2, -crop.h / 2),
+    localToWorld(crop, crop.w / 2, -crop.h / 2),
+    localToWorld(crop, crop.w / 2, crop.h / 2),
+    localToWorld(crop, -crop.w / 2, crop.h / 2)
+  ];
+}
+
+function getRotateHandlePoint(crop) {
+  const offset = Math.max(24, Math.min(crop.w, crop.h) * 0.22);
+  return localToWorld(crop, 0, -crop.h / 2 - offset);
+}
+
+function drawLocalCropLine(crop, x1, y1, x2, y2) {
+  const a = localToWorld(crop, x1, y1);
+  const b = localToWorld(crop, x2, y2);
+  sourceCtx.moveTo(a.x, a.y);
+  sourceCtx.lineTo(b.x, b.y);
 }
 
 function hitCropTarget(point) {
@@ -218,7 +289,8 @@ function hitCropTarget(point) {
   for (const handle of getCropHandlePoints(crop)) {
     if (Math.hypot(point.x - handle.x, point.y - handle.y) <= radius) return handle.name;
   }
-  if (point.x >= crop.x && point.x <= crop.x + crop.w && point.y >= crop.y && point.y <= crop.y + crop.h) {
+  const local = worldToLocal(crop, point);
+  if (Math.abs(local.x) <= crop.w / 2 && Math.abs(local.y) <= crop.h / 2) {
     return "move";
   }
   return "new";
@@ -226,43 +298,60 @@ function hitCropTarget(point) {
 
 function resizeCropFromDrag(drag, point) {
   const start = drag.startCrop;
-  let left = start.x;
-  let top = start.y;
-  let right = start.x + start.w;
-  let bottom = start.y + start.h;
+  const local = worldToLocal(start, point);
+  let left = -start.w / 2;
+  let top = -start.h / 2;
+  let right = start.w / 2;
+  let bottom = start.h / 2;
 
-  if (drag.target.includes("w")) left = point.x;
-  if (drag.target.includes("e")) right = point.x;
-  if (drag.target.includes("n")) top = point.y;
-  if (drag.target.includes("s")) bottom = point.y;
+  if (drag.target.includes("w")) left = local.x;
+  if (drag.target.includes("e")) right = local.x;
+  if (drag.target.includes("n")) top = local.y;
+  if (drag.target.includes("s")) bottom = local.y;
 
   if (drag.target === "n" || drag.target === "s") {
-    left = start.x;
-    right = start.x + start.w;
+    left = -start.w / 2;
+    right = start.w / 2;
   }
   if (drag.target === "e" || drag.target === "w") {
-    top = start.y;
-    bottom = start.y + start.h;
+    top = -start.h / 2;
+    bottom = start.h / 2;
   }
 
   if (right < left) [left, right] = [right, left];
   if (bottom < top) [top, bottom] = [bottom, top];
 
-  let crop = { x: left, y: top, w: right - left, h: bottom - top };
-  if (controls.squareCrop.checked) crop = makeSquareResize(start, crop, drag.target);
-  return normalizeCrop(crop);
-}
+  let w = Math.max(1, right - left);
+  let h = Math.max(1, bottom - top);
+  let localCenter = { x: (left + right) / 2, y: (top + bottom) / 2 };
 
-function makeSquareResize(start, crop, target) {
-  const side = Math.max(1, Math.min(crop.w, crop.h));
-  let x = crop.x;
-  let y = crop.y;
+  if (controls.squareCrop.checked) {
+    const side = Math.max(1, Math.min(w, h));
+    if (drag.target.includes("w")) localCenter.x = start.w / 2 - side / 2;
+    if (drag.target.includes("e")) localCenter.x = -start.w / 2 + side / 2;
+    if (drag.target.includes("n")) localCenter.y = start.h / 2 - side / 2;
+    if (drag.target.includes("s")) localCenter.y = -start.h / 2 + side / 2;
+    if (drag.target === "n" || drag.target === "s") localCenter.x = 0;
+    if (drag.target === "e" || drag.target === "w") localCenter.y = 0;
+    w = side;
+    h = side;
+  }
 
-  if (target.includes("w")) x = start.x + start.w - side;
-  if (target.includes("n")) y = start.y + start.h - side;
-  if (target === "e" || target === "w") y = start.y + (start.h - side) / 2;
-  if (target === "n" || target === "s") x = start.x + (start.w - side) / 2;
-  return { x, y, w: side, h: side };
+  const center = getCropCenter(start);
+  const angle = toRad(start.angle || 0);
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const worldCenter = {
+    x: center.x + localCenter.x * cos - localCenter.y * sin,
+    y: center.y + localCenter.x * sin + localCenter.y * cos
+  };
+  return normalizeCrop({
+    x: worldCenter.x - w / 2,
+    y: worldCenter.y - h / 2,
+    w,
+    h,
+    angle: start.angle || 0
+  });
 }
 
 function pointerToCanvas(event, canvas) {
@@ -281,6 +370,7 @@ async function loadFile(file) {
     URL.revokeObjectURL(url);
     state.image = image;
     state.fileName = sanitizeFileName(file.name);
+    controls.cropAngle.value = 0;
     state.crop = makeDefaultCrop();
     sourceMeta.textContent = `${image.width} x ${image.height}`;
     dropZone.classList.add("has-image");
@@ -302,7 +392,8 @@ function renderOutput() {
   cleanOutputCanvas.height = height;
   cleanOutputCtx.imageSmoothingEnabled = !controls.pixelated.checked;
   cleanOutputCtx.clearRect(0, 0, width, height);
-  cleanOutputCtx.drawImage(state.image, crop.x, crop.y, crop.w, crop.h, 0, 0, width, height);
+  const cropBuffer = makeCropBuffer(crop);
+  cleanOutputCtx.drawImage(cropBuffer, 0, 0, width, height);
 
   let imageData = cleanOutputCtx.getImageData(0, 0, width, height);
   imageData = colorToAlpha(imageData);
@@ -316,6 +407,21 @@ function renderOutput() {
   cleanOutputCtx.putImageData(imageData, 0, 0);
   paintOutputPreview();
   outputMeta.textContent = `${width} x ${height}${controls.tilePreview.checked ? " in 3x3 tile preview" : ""}${state.crop ? ` from ${crop.w} x ${crop.h} crop` : ""}`;
+}
+
+function makeCropBuffer(crop) {
+  const buffer = document.createElement("canvas");
+  buffer.width = Math.max(1, Math.round(crop.w));
+  buffer.height = Math.max(1, Math.round(crop.h));
+  const ctx = buffer.getContext("2d");
+  const center = getCropCenter(crop);
+  ctx.imageSmoothingEnabled = !controls.pixelated.checked;
+  ctx.clearRect(0, 0, buffer.width, buffer.height);
+  ctx.translate(buffer.width / 2, buffer.height / 2);
+  ctx.rotate(-toRad(crop.angle || 0));
+  ctx.translate(-center.x, -center.y);
+  ctx.drawImage(state.image, 0, 0);
+  return buffer;
 }
 
 function paintOutputPreview() {
@@ -921,6 +1027,12 @@ function smoothstep(edge0, edge1, value) {
   return t * t * (3 - 2 * t);
 }
 
+function normalizeAngle(angle) {
+  let value = ((angle + 180) % 360 + 360) % 360 - 180;
+  if (Object.is(value, -0)) value = 0;
+  return value;
+}
+
 function sampleEdgeColor(imageData) {
   const { width, height, data } = imageData;
   const samples = [];
@@ -1022,6 +1134,53 @@ function resetSymmetry() {
   renderOutput();
 }
 
+function resetTools() {
+  controls.outWidth.value = 16;
+  controls.outHeight.value = 16;
+  controls.lockRatio.checked = true;
+  controls.pixelated.checked = true;
+  controls.showGrid.checked = false;
+  controls.tilePreview.checked = false;
+  controls.squareCrop.checked = true;
+  controls.cropAngle.value = 0;
+  controls.alphaOn.checked = false;
+  controls.alphaColor.value = "#ffffff";
+  controls.alphaTolerance.value = 36;
+  controls.removeBg.checked = false;
+  controls.bgTolerance.value = 42;
+  controls.paletteOn.checked = true;
+  controls.paletteColors.value = 16;
+  controls.edgeDetect.checked = false;
+  controls.edgeStrength.value = 80;
+  controls.symmetryOn.checked = false;
+  controls.showSymmetryGuide.checked = true;
+  controls.seamlessOn.checked = false;
+  controls.seamBlend.value = 18;
+  controls.shadeOn.checked = false;
+  controls.lightStrength.value = 34;
+
+  state.cropMode = true;
+  state.pickingAlpha = false;
+  state.editSymmetry = false;
+  state.editLight = false;
+  state.cropDrag = null;
+  state.outputDrag = null;
+  state.symmetry = {
+    a: { x: 0.5, y: 0.0 },
+    b: { x: 0.5, y: 1.0 }
+  };
+  state.light = { x: 0.35, y: 0.25 };
+  state.crop = state.image ? makeDefaultCrop() : null;
+
+  controls.cropBtn.classList.add("active");
+  controls.pickAlphaBtn.classList.remove("active");
+  controls.editSymmetryBtn.classList.remove("active");
+  controls.editLightBtn.classList.remove("active");
+
+  drawSource();
+  renderOutput();
+}
+
 function setOutputPoint(point, which) {
   const { width, height } = state.preview;
   const x = clamp(point.x / Math.max(1, width), 0, 1);
@@ -1099,7 +1258,12 @@ sourceCanvas.addEventListener("pointermove", event => {
   const p = pointerToCanvas(event, sourceCanvas);
   const drag = state.cropDrag;
 
-  if (drag.target === "move") {
+  if (drag.target === "rotate") {
+    const center = getCropCenter(drag.startCrop);
+    const angle = normalizeAngle(toDeg(Math.atan2(p.y - center.y, p.x - center.x)) + 90);
+    state.crop = normalizeCrop({ ...drag.startCrop, angle });
+    controls.cropAngle.value = Math.round(angle);
+  } else if (drag.target === "move") {
     state.crop = normalizeCrop({
       ...drag.startCrop,
       x: drag.startCrop.x + p.x - drag.start.x,
@@ -1157,7 +1321,8 @@ function makeCropRect(a, b) {
     x: Math.min(x1, x2),
     y: Math.min(y1, y2),
     w: Math.max(1, Math.abs(x2 - x1)),
-    h: Math.max(1, Math.abs(y2 - y1))
+    h: Math.max(1, Math.abs(y2 - y1)),
+    angle: normalizeAngle(parseFloat(controls.cropAngle.value) || 0)
   };
 }
 
@@ -1195,6 +1360,7 @@ controls.editLightBtn.addEventListener("click", () => {
 });
 
 controls.resetCropBtn.addEventListener("click", resetCrop);
+controls.resetToolsBtn.addEventListener("click", resetTools);
 controls.resetSymmetryBtn.addEventListener("click", resetSymmetry);
 controls.renderBtn.addEventListener("click", renderOutput);
 controls.downloadBtn.addEventListener("click", downloadOutput);
@@ -1203,13 +1369,18 @@ Object.values(controls).forEach(control => {
   if (!control || control.type === "file") return;
   control.addEventListener("input", () => {
     syncSizeInputs(control);
+    if (control === controls.cropAngle && state.crop) {
+      const angle = normalizeAngle(parseFloat(controls.cropAngle.value) || 0);
+      controls.cropAngle.value = Math.round(angle * 100) / 100;
+      state.crop = normalizeCrop({ ...state.crop, angle });
+    }
     if (control === controls.squareCrop && state.image) {
       const crop = state.crop || makeDefaultCrop();
       const cx = crop.x + crop.w / 2;
       const cy = crop.y + crop.h / 2;
       const side = Math.min(crop.w, crop.h);
       state.crop = controls.squareCrop.checked
-        ? normalizeCrop({ x: cx - side / 2, y: cy - side / 2, w: side, h: side })
+        ? normalizeCrop({ x: cx - side / 2, y: cy - side / 2, w: side, h: side, angle: crop.angle || 0 })
         : normalizeCrop(crop);
     }
     drawSource();
