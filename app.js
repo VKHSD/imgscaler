@@ -2,6 +2,8 @@ const sourceCanvas = document.querySelector("#sourceCanvas");
 const sourceCtx = sourceCanvas.getContext("2d", { willReadFrequently: true });
 const outputCanvas = document.querySelector("#outputCanvas");
 const outputCtx = outputCanvas.getContext("2d", { willReadFrequently: true });
+const outputOverlay = document.querySelector("#outputOverlay");
+const overlayCtx = outputOverlay.getContext("2d");
 const cleanOutputCanvas = document.createElement("canvas");
 const cleanOutputCtx = cleanOutputCanvas.getContext("2d", { willReadFrequently: true });
 const sampleCanvas = document.createElement("canvas");
@@ -54,7 +56,8 @@ const state = {
     a: { x: 0.5, y: 0.0 },
     b: { x: 0.5, y: 1.0 }
   },
-  light: { x: 0.35, y: 0.25 }
+  light: { x: 0.35, y: 0.25 },
+  preview: { width: 16, height: 16, cssWidth: 0, cssHeight: 0 }
 };
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -321,10 +324,13 @@ function paintOutputPreview() {
   if (cleanOutputCanvas.width) {
     outputCtx.drawImage(cleanOutputCanvas, 0, 0);
   }
-  if (controls.showGrid.checked) drawGrid(outputCtx, width, height);
-  if (controls.symmetryOn.checked || state.editSymmetry) drawSymmetryOverlay(outputCtx, width, height);
-  if (controls.shadeOn.checked || state.editLight) drawLightOverlay(outputCtx, width, height);
   updateOutputPreviewSize(width, height);
+  drawOutputOverlay();
+}
+
+function resizeOutputPreview() {
+  updateOutputPreviewSize(cleanOutputCanvas.width || 16, cleanOutputCanvas.height || 16);
+  drawOutputOverlay();
 }
 
 function colorToAlpha(imageData) {
@@ -530,22 +536,23 @@ function applySymmetry(imageData) {
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const vx = x - line.a.x;
-      const vy = y - line.a.y;
+      const cx = x + 0.5;
+      const cy = y + 0.5;
+      const vx = cx - line.a.x;
+      const vy = cy - line.a.y;
       const side = vx * uy - vy * ux;
       if (side <= 0) continue;
 
       const dot = vx * ux + vy * uy;
       const px = line.a.x + dot * ux;
       const py = line.a.y + dot * uy;
-      const sx = Math.round(clamp(2 * px - x, 0, width - 1));
-      const sy = Math.round(clamp(2 * py - y, 0, height - 1));
+      const sample = bilinearSample(original, width, height, 2 * px - cx - 0.5, 2 * py - cy - 0.5);
       const to = (y * width + x) * 4;
-      const from = (sy * width + sx) * 4;
-      data[to] = original[from];
-      data[to + 1] = original[from + 1];
-      data[to + 2] = original[from + 2];
-      data[to + 3] = original[from + 3];
+      const blend = smoothstep(0.08, 0.95, side);
+      data[to] = Math.round(lerp(original[to], sample.r, blend));
+      data[to + 1] = Math.round(lerp(original[to + 1], sample.g, blend));
+      data[to + 2] = Math.round(lerp(original[to + 2], sample.b, blend));
+      data[to + 3] = Math.round(lerp(original[to + 3], sample.a, blend));
     }
   }
 
@@ -555,110 +562,56 @@ function applySymmetry(imageData) {
 function applyFakeLighting(imageData) {
   const { width, height, data } = imageData;
   const strength = (parseFloat(controls.lightStrength.value) || 0) / 100;
-  const lx = state.light.x * (width - 1);
-  const ly = state.light.y * (height - 1);
-  const radius = Math.max(width, height) * 0.78;
+  const effect = Math.abs(strength);
+  if (effect <= 0.001) return imageData;
+
+  const original = new Uint8ClampedArray(data);
+  const lx = state.light.x * width;
+  const ly = state.light.y * height;
+  const lightHeight = Math.max(width, height) * 0.72;
+  const maxDistance = Math.hypot(Math.max(lx, width - lx), Math.max(ly, height - ly));
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = (y * width + x) * 4;
       if (data[i + 3] === 0) continue;
-      const distance = Math.hypot(x - lx, y - ly) / Math.max(1, radius);
-      const falloff = clamp(1 - distance, -0.45, 1);
-      const shade = 1 + strength * falloff;
-      data[i] = clamp(data[i] * shade, 0, 255);
-      data[i + 1] = clamp(data[i + 1] * shade, 0, 255);
-      data[i + 2] = clamp(data[i + 2] * shade, 0, 255);
+
+      const centerX = x + 0.5;
+      const centerY = y + 0.5;
+      const heightLeft = luminanceAt(original, width, height, x - 1, y) / 255;
+      const heightRight = luminanceAt(original, width, height, x + 1, y) / 255;
+      const heightUp = luminanceAt(original, width, height, x, y - 1) / 255;
+      const heightDown = luminanceAt(original, width, height, x, y + 1) / 255;
+      const normal = normalize3(
+        (heightLeft - heightRight) * 1.65,
+        (heightUp - heightDown) * 1.65,
+        1
+      );
+
+      let light = normalize3(lx - centerX, ly - centerY, lightHeight);
+      if (strength < 0) light = { x: -light.x, y: -light.y, z: light.z };
+
+      const diffuse = clamp(normal.x * light.x + normal.y * light.y + normal.z * light.z, 0, 1);
+      const distance = Math.hypot(centerX - lx, centerY - ly) / Math.max(1, maxDistance);
+      const falloff = lerp(1, 0.72, clamp(distance, 0, 1));
+      const baseLum = luminanceAt(original, width, height, x, y) / 255;
+      const shadowBias = lerp(0.9, 1.08, baseLum);
+      const shade = lerp(0.72, 1.28, diffuse) * falloff * shadowBias;
+      const multiplier = lerp(1, shade, effect);
+
+      data[i] = clamp(original[i] * multiplier, 0, 255);
+      data[i + 1] = clamp(original[i + 1] * multiplier, 0, 255);
+      data[i + 2] = clamp(original[i + 2] * multiplier, 0, 255);
     }
   }
 
   return imageData;
 }
 
-function drawGrid(ctx, width, height) {
-  if (width > 128 || height > 128) return;
-  ctx.save();
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.26)";
-  ctx.lineWidth = 1;
-  for (let x = 1; x < width; x++) {
-    ctx.beginPath();
-    ctx.moveTo(x + 0.5, 0);
-    ctx.lineTo(x + 0.5, height);
-    ctx.stroke();
-  }
-  for (let y = 1; y < height; y++) {
-    ctx.beginPath();
-    ctx.moveTo(0, y + 0.5);
-    ctx.lineTo(width, y + 0.5);
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-function drawSymmetryOverlay(ctx, width, height) {
-  const line = getSymmetryLinePixels(width, height);
-  const extended = extendLineToCanvas(line.a, line.b, width, height);
-  const s = handleScale(outputCanvas);
-  ctx.save();
-  ctx.strokeStyle = "rgba(250, 204, 21, 0.36)";
-  ctx.lineWidth = 1.5 * s;
-  ctx.beginPath();
-  ctx.moveTo(extended.a.x, extended.a.y);
-  ctx.lineTo(extended.b.x, extended.b.y);
-  ctx.stroke();
-
-  ctx.strokeStyle = "#facc15";
-  ctx.lineWidth = 2.5 * s;
-  ctx.beginPath();
-  ctx.moveTo(line.a.x, line.a.y);
-  ctx.lineTo(line.b.x, line.b.y);
-  ctx.stroke();
-  drawOutputHandle(ctx, line.a.x, line.a.y, width, "#facc15");
-  drawOutputHandle(ctx, line.b.x, line.b.y, width, "#facc15");
-  ctx.restore();
-}
-
-function drawLightOverlay(ctx, width, height) {
-  const x = state.light.x * (width - 1);
-  const y = state.light.y * (height - 1);
-  const radius = Math.max(width, height) * 0.32;
-  const s = handleScale(outputCanvas);
-  const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-  gradient.addColorStop(0, "rgba(254, 240, 138, 0.24)");
-  gradient.addColorStop(1, "rgba(254, 240, 138, 0)");
-
-  ctx.save();
-  ctx.fillStyle = gradient;
-  ctx.beginPath();
-  ctx.arc(x, y, radius, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(254, 240, 138, 0.58)";
-  ctx.lineWidth = 2 * s;
-  ctx.beginPath();
-  ctx.arc(x, y, radius, 0, Math.PI * 2);
-  ctx.stroke();
-  drawOutputHandle(ctx, x, y, width, "#fef08a");
-  ctx.restore();
-}
-
-function drawOutputHandle(ctx, x, y, width, color) {
-  const s = handleScale(outputCanvas);
-  const radius = 8 * s;
-  ctx.save();
-  ctx.fillStyle = "#101114";
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2 * s;
-  ctx.beginPath();
-  ctx.arc(x, y, radius, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-  ctx.restore();
-}
-
 function getSymmetryLinePixels(width, height) {
   return {
-    a: { x: state.symmetry.a.x * (width - 1), y: state.symmetry.a.y * (height - 1) },
-    b: { x: state.symmetry.b.x * (width - 1), y: state.symmetry.b.y * (height - 1) }
+    a: { x: state.symmetry.a.x * width, y: state.symmetry.a.y * height },
+    b: { x: state.symmetry.b.x * width, y: state.symmetry.b.y * height }
   };
 }
 
@@ -676,11 +629,186 @@ function extendLineToCanvas(a, b, width, height) {
 }
 
 function updateOutputPreviewSize(width, height) {
-  const wrap = outputCanvas.parentElement.getBoundingClientRect();
+  const stage = document.querySelector("#previewStage");
+  const wrap = stage.parentElement.getBoundingClientRect();
   const maxSide = Math.max(160, Math.min(wrap.width - 32, wrap.height - 32, 720));
   const scale = Math.min(maxSide / width, maxSide / height);
-  outputCanvas.style.width = `${Math.max(1, Math.round(width * scale))}px`;
-  outputCanvas.style.height = `${Math.max(1, Math.round(height * scale))}px`;
+  const cssWidth = Math.max(1, Math.round(width * scale));
+  const cssHeight = Math.max(1, Math.round(height * scale));
+  state.preview = { width, height, cssWidth, cssHeight };
+  stage.style.width = `${cssWidth}px`;
+  stage.style.height = `${cssHeight}px`;
+  outputCanvas.style.width = `${cssWidth}px`;
+  outputCanvas.style.height = `${cssHeight}px`;
+  outputOverlay.style.width = `${cssWidth}px`;
+  outputOverlay.style.height = `${cssHeight}px`;
+}
+
+function drawOutputOverlay() {
+  const { width, height, cssWidth, cssHeight } = state.preview;
+  const dpr = window.devicePixelRatio || 1;
+  outputOverlay.width = Math.max(1, Math.round(cssWidth * dpr));
+  outputOverlay.height = Math.max(1, Math.round(cssHeight * dpr));
+  overlayCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  overlayCtx.clearRect(0, 0, cssWidth, cssHeight);
+
+  if (controls.showGrid.checked || state.editSymmetry) drawOverlayGrid(width, height, cssWidth, cssHeight);
+  if (controls.symmetryOn.checked || state.editSymmetry) drawSymmetryOverlay(width, height, cssWidth, cssHeight);
+  if (state.editLight) drawLightOverlay(width, height, cssWidth, cssHeight);
+}
+
+function drawOverlayGrid(width, height, cssWidth, cssHeight) {
+  if (width > 192 || height > 192) return;
+  overlayCtx.save();
+  overlayCtx.strokeStyle = "rgba(0, 0, 0, 0.82)";
+  overlayCtx.lineWidth = 1;
+
+  for (let x = 0; x <= width; x++) {
+    const cssX = crispLine((x / width) * cssWidth);
+    overlayCtx.beginPath();
+    overlayCtx.moveTo(cssX, 0);
+    overlayCtx.lineTo(cssX, cssHeight);
+    overlayCtx.stroke();
+  }
+
+  for (let y = 0; y <= height; y++) {
+    const cssY = crispLine((y / height) * cssHeight);
+    overlayCtx.beginPath();
+    overlayCtx.moveTo(0, cssY);
+    overlayCtx.lineTo(cssWidth, cssY);
+    overlayCtx.stroke();
+  }
+
+  overlayCtx.restore();
+}
+
+function drawSymmetryOverlay(width, height, cssWidth, cssHeight) {
+  const line = getSymmetryLinePixels(width, height);
+  const extended = extendLineToCanvas(line.a, line.b, width, height);
+  const a = gridToCss(line.a, width, height, cssWidth, cssHeight);
+  const b = gridToCss(line.b, width, height, cssWidth, cssHeight);
+  const ea = gridToCss(extended.a, width, height, cssWidth, cssHeight);
+  const eb = gridToCss(extended.b, width, height, cssWidth, cssHeight);
+
+  overlayCtx.save();
+  overlayCtx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+  overlayCtx.lineWidth = 5;
+  overlayCtx.beginPath();
+  overlayCtx.moveTo(ea.x, ea.y);
+  overlayCtx.lineTo(eb.x, eb.y);
+  overlayCtx.stroke();
+
+  overlayCtx.strokeStyle = "#0ea5e9";
+  overlayCtx.lineWidth = 2;
+  overlayCtx.beginPath();
+  overlayCtx.moveTo(ea.x, ea.y);
+  overlayCtx.lineTo(eb.x, eb.y);
+  overlayCtx.stroke();
+
+  overlayCtx.strokeStyle = "#38bdf8";
+  overlayCtx.lineWidth = 3;
+  overlayCtx.beginPath();
+  overlayCtx.moveTo(a.x, a.y);
+  overlayCtx.lineTo(b.x, b.y);
+  overlayCtx.stroke();
+
+  drawOutputHandle(a.x, a.y, "#38bdf8");
+  drawOutputHandle(b.x, b.y, "#38bdf8");
+  overlayCtx.restore();
+}
+
+function drawLightOverlay(width, height, cssWidth, cssHeight) {
+  const point = gridToCss({ x: state.light.x * width, y: state.light.y * height }, width, height, cssWidth, cssHeight);
+  const radius = Math.min(cssWidth, cssHeight) * 0.28;
+
+  overlayCtx.save();
+  overlayCtx.strokeStyle = "rgba(255, 255, 255, 0.86)";
+  overlayCtx.lineWidth = 2;
+  overlayCtx.setLineDash([7, 6]);
+  overlayCtx.beginPath();
+  overlayCtx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+  overlayCtx.stroke();
+  overlayCtx.setLineDash([]);
+  overlayCtx.strokeStyle = "rgba(0, 0, 0, 0.75)";
+  overlayCtx.lineWidth = 1;
+  overlayCtx.beginPath();
+  overlayCtx.arc(point.x, point.y, radius + 2, 0, Math.PI * 2);
+  overlayCtx.stroke();
+  drawOutputHandle(point.x, point.y, "#f8fafc");
+  overlayCtx.restore();
+}
+
+function drawOutputHandle(x, y, color) {
+  overlayCtx.save();
+  overlayCtx.fillStyle = "#101114";
+  overlayCtx.strokeStyle = color;
+  overlayCtx.lineWidth = 2;
+  overlayCtx.beginPath();
+  overlayCtx.arc(x, y, 8, 0, Math.PI * 2);
+  overlayCtx.fill();
+  overlayCtx.stroke();
+  overlayCtx.restore();
+}
+
+function crispLine(value) {
+  return Math.round(value) + 0.5;
+}
+
+function gridToCss(point, width, height, cssWidth, cssHeight) {
+  return {
+    x: (point.x / width) * cssWidth,
+    y: (point.y / height) * cssHeight
+  };
+}
+
+function pointerToOutputGrid(event) {
+  const rect = outputOverlay.getBoundingClientRect();
+  const { width, height } = state.preview;
+  return {
+    x: clamp(((event.clientX - rect.left) / rect.width) * width, 0, width),
+    y: clamp(((event.clientY - rect.top) / rect.height) * height, 0, height)
+  };
+}
+
+function bilinearSample(data, width, height, x, y) {
+  const x0 = Math.floor(clamp(x, 0, width - 1));
+  const y0 = Math.floor(clamp(y, 0, height - 1));
+  const x1 = clamp(x0 + 1, 0, width - 1);
+  const y1 = clamp(y0 + 1, 0, height - 1);
+  const tx = clamp(x - x0, 0, 1);
+  const ty = clamp(y - y0, 0, 1);
+  const c00 = rawPixelAt(data, width, x0, y0);
+  const c10 = rawPixelAt(data, width, x1, y0);
+  const c01 = rawPixelAt(data, width, x0, y1);
+  const c11 = rawPixelAt(data, width, x1, y1);
+  return {
+    r: lerp(lerp(c00.r, c10.r, tx), lerp(c01.r, c11.r, tx), ty),
+    g: lerp(lerp(c00.g, c10.g, tx), lerp(c01.g, c11.g, tx), ty),
+    b: lerp(lerp(c00.b, c10.b, tx), lerp(c01.b, c11.b, tx), ty),
+    a: lerp(lerp(c00.a, c10.a, tx), lerp(c01.a, c11.a, tx), ty)
+  };
+}
+
+function rawPixelAt(data, width, x, y) {
+  const i = (y * width + x) * 4;
+  return { r: data[i], g: data[i + 1], b: data[i + 2], a: data[i + 3] };
+}
+
+function luminanceAt(data, width, height, x, y) {
+  const sx = clamp(x, 0, width - 1);
+  const sy = clamp(y, 0, height - 1);
+  const i = (sy * width + sx) * 4;
+  return data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+}
+
+function normalize3(x, y, z) {
+  const len = Math.hypot(x, y, z) || 1;
+  return { x: x / len, y: y / len, z: z / len };
+}
+
+function smoothstep(edge0, edge1, value) {
+  const t = clamp((value - edge0) / Math.max(0.0001, edge1 - edge0), 0, 1);
+  return t * t * (3 - 2 * t);
 }
 
 function sampleEdgeColor(imageData) {
@@ -785,19 +913,21 @@ function resetSymmetry() {
 }
 
 function setOutputPoint(point, which) {
-  const x = clamp(point.x / Math.max(1, outputCanvas.width - 1), 0, 1);
-  const y = clamp(point.y / Math.max(1, outputCanvas.height - 1), 0, 1);
+  const { width, height } = state.preview;
+  const x = clamp(point.x / Math.max(1, width), 0, 1);
+  const y = clamp(point.y / Math.max(1, height), 0, 1);
   if (which === "light") state.light = { x, y };
   if (which === "a") state.symmetry.a = { x, y };
   if (which === "b") state.symmetry.b = { x, y };
 }
 
 function hitOutputPoint(point) {
-  const radius = 16 * handleScale(outputCanvas);
-  const line = getSymmetryLinePixels(outputCanvas.width, outputCanvas.height);
+  const { width, height, cssWidth } = state.preview;
+  const radius = 16 / Math.max(1, cssWidth / width);
+  const line = getSymmetryLinePixels(width, height);
   const light = {
-    x: state.light.x * (outputCanvas.width - 1),
-    y: state.light.y * (outputCanvas.height - 1)
+    x: state.light.x * width,
+    y: state.light.y * height
   };
 
   if (state.editLight && Math.hypot(point.x - light.x, point.y - light.y) <= radius) return "light";
@@ -879,25 +1009,25 @@ sourceCanvas.addEventListener("pointerup", () => {
   state.cropDrag = null;
 });
 
-outputCanvas.addEventListener("pointerdown", event => {
+outputOverlay.addEventListener("pointerdown", event => {
   if (!state.image) return;
-  const p = pointerToCanvas(event, outputCanvas);
+  const p = pointerToOutputGrid(event);
   const target = hitOutputPoint(p);
   if (!target) return;
   state.outputDrag = target;
   setOutputPoint(p, target);
-  outputCanvas.setPointerCapture(event.pointerId);
+  outputOverlay.setPointerCapture(event.pointerId);
   renderOutput();
 });
 
-outputCanvas.addEventListener("pointermove", event => {
+outputOverlay.addEventListener("pointermove", event => {
   if (!state.outputDrag) return;
-  const p = pointerToCanvas(event, outputCanvas);
+  const p = pointerToOutputGrid(event);
   setOutputPoint(p, state.outputDrag);
   renderOutput();
 });
 
-outputCanvas.addEventListener("pointerup", () => {
+outputOverlay.addEventListener("pointerup", () => {
   state.outputDrag = null;
 });
 
@@ -934,18 +1064,24 @@ controls.pickAlphaBtn.addEventListener("click", () => {
 
 controls.editSymmetryBtn.addEventListener("click", () => {
   state.editSymmetry = !state.editSymmetry;
-  if (state.editSymmetry) state.editLight = false;
+  if (state.editSymmetry) {
+    state.editLight = false;
+    controls.symmetryOn.checked = true;
+  }
   controls.editSymmetryBtn.classList.toggle("active", state.editSymmetry);
   controls.editLightBtn.classList.toggle("active", state.editLight);
-  paintOutputPreview();
+  renderOutput();
 });
 
 controls.editLightBtn.addEventListener("click", () => {
   state.editLight = !state.editLight;
-  if (state.editLight) state.editSymmetry = false;
+  if (state.editLight) {
+    state.editSymmetry = false;
+    controls.shadeOn.checked = true;
+  }
   controls.editLightBtn.classList.toggle("active", state.editLight);
   controls.editSymmetryBtn.classList.toggle("active", state.editSymmetry);
-  paintOutputPreview();
+  renderOutput();
 });
 
 controls.resetCropBtn.addEventListener("click", resetCrop);
@@ -971,7 +1107,7 @@ Object.values(controls).forEach(control => {
   });
 });
 
-window.addEventListener("resize", paintOutputPreview);
+window.addEventListener("resize", resizeOutputPreview);
 
 setupDragNumbers();
 drawSource();
