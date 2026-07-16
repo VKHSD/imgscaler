@@ -24,6 +24,7 @@ const controls = {
   lockRatio: document.querySelector("#lockRatio"),
   pixelated: document.querySelector("#pixelated"),
   showGrid: document.querySelector("#showGrid"),
+  tilePreview: document.querySelector("#tilePreview"),
   pickAlphaBtn: document.querySelector("#pickAlphaBtn"),
   alphaOn: document.querySelector("#alphaOn"),
   alphaColor: document.querySelector("#alphaColor"),
@@ -35,8 +36,11 @@ const controls = {
   edgeDetect: document.querySelector("#edgeDetect"),
   edgeStrength: document.querySelector("#edgeStrength"),
   symmetryOn: document.querySelector("#symmetryOn"),
+  showSymmetryGuide: document.querySelector("#showSymmetryGuide"),
   editSymmetryBtn: document.querySelector("#editSymmetryBtn"),
   resetSymmetryBtn: document.querySelector("#resetSymmetryBtn"),
+  seamlessOn: document.querySelector("#seamlessOn"),
+  seamBlend: document.querySelector("#seamBlend"),
   shadeOn: document.querySelector("#shadeOn"),
   editLightBtn: document.querySelector("#editLightBtn"),
   lightStrength: document.querySelector("#lightStrength")
@@ -57,7 +61,7 @@ const state = {
     b: { x: 0.5, y: 1.0 }
   },
   light: { x: 0.35, y: 0.25 },
-  preview: { width: 16, height: 16, cssWidth: 0, cssHeight: 0 }
+  preview: { width: 16, height: 16, viewWidth: 16, viewHeight: 16, tileCount: 1, cssWidth: 0, cssHeight: 0 }
 };
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -306,30 +310,41 @@ function renderOutput() {
   if (controls.symmetryOn.checked) imageData = applySymmetry(imageData);
   if (controls.shadeOn.checked) imageData = applyFakeLighting(imageData);
   if (controls.edgeDetect.checked) imageData = applyEdgeDetection(imageData);
+  if (controls.seamlessOn.checked) imageData = applySeamlessTileBlend(imageData);
   if (controls.paletteOn.checked) imageData = limitPalette(imageData);
 
   cleanOutputCtx.putImageData(imageData, 0, 0);
   paintOutputPreview();
-  outputMeta.textContent = `${width} x ${height}${state.crop ? ` from ${crop.w} x ${crop.h} crop` : ""}`;
+  outputMeta.textContent = `${width} x ${height}${controls.tilePreview.checked ? " in 3x3 tile preview" : ""}${state.crop ? ` from ${crop.w} x ${crop.h} crop` : ""}`;
 }
 
 function paintOutputPreview() {
   const width = cleanOutputCanvas.width || 16;
   const height = cleanOutputCanvas.height || 16;
-  outputCanvas.width = width;
-  outputCanvas.height = height;
+  const tileCount = controls.tilePreview.checked ? 3 : 1;
+  const viewWidth = width * tileCount;
+  const viewHeight = height * tileCount;
+  outputCanvas.width = viewWidth;
+  outputCanvas.height = viewHeight;
   outputCtx.imageSmoothingEnabled = false;
-  outputCtx.clearRect(0, 0, width, height);
+  outputCtx.clearRect(0, 0, viewWidth, viewHeight);
 
   if (cleanOutputCanvas.width) {
-    outputCtx.drawImage(cleanOutputCanvas, 0, 0);
+    for (let ty = 0; ty < tileCount; ty++) {
+      for (let tx = 0; tx < tileCount; tx++) {
+        outputCtx.drawImage(cleanOutputCanvas, tx * width, ty * height);
+      }
+    }
   }
-  updateOutputPreviewSize(width, height);
+  updateOutputPreviewSize(width, height, viewWidth, viewHeight, tileCount);
   drawOutputOverlay();
 }
 
 function resizeOutputPreview() {
-  updateOutputPreviewSize(cleanOutputCanvas.width || 16, cleanOutputCanvas.height || 16);
+  const width = cleanOutputCanvas.width || 16;
+  const height = cleanOutputCanvas.height || 16;
+  const tileCount = controls.tilePreview.checked ? 3 : 1;
+  updateOutputPreviewSize(width, height, width * tileCount, height * tileCount, tileCount);
   drawOutputOverlay();
 }
 
@@ -608,6 +623,66 @@ function applyFakeLighting(imageData) {
   return imageData;
 }
 
+function applySeamlessTileBlend(imageData) {
+  const { width, height, data } = imageData;
+  if (width < 2 || height < 2) return imageData;
+
+  const percent = clamp(parseFloat(controls.seamBlend.value) || 18, 1, 50) / 100;
+  controls.seamBlend.value = Math.round(percent * 100);
+  const bandX = clamp(Math.round(width * percent), 1, Math.floor(width / 2));
+  const bandY = clamp(Math.round(height * percent), 1, Math.floor(height / 2));
+  const original = new Uint8ClampedArray(data);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      let r = original[i];
+      let g = original[i + 1];
+      let b = original[i + 2];
+      let a = original[i + 3];
+
+      if (x < bandX) {
+        const w = 0.5 * (1 - smoothstep(0, 1, x / bandX));
+        const p = ((y * width) + (width - bandX + x)) * 4;
+        r = lerp(r, original[p], w);
+        g = lerp(g, original[p + 1], w);
+        b = lerp(b, original[p + 2], w);
+        a = lerp(a, original[p + 3], w);
+      } else if (x >= width - bandX) {
+        const w = 0.5 * (1 - smoothstep(0, 1, (width - 1 - x) / bandX));
+        const p = ((y * width) + (x - (width - bandX))) * 4;
+        r = lerp(r, original[p], w);
+        g = lerp(g, original[p + 1], w);
+        b = lerp(b, original[p + 2], w);
+        a = lerp(a, original[p + 3], w);
+      }
+
+      if (y < bandY) {
+        const w = 0.5 * (1 - smoothstep(0, 1, y / bandY));
+        const p = (((height - bandY + y) * width) + x) * 4;
+        r = lerp(r, original[p], w);
+        g = lerp(g, original[p + 1], w);
+        b = lerp(b, original[p + 2], w);
+        a = lerp(a, original[p + 3], w);
+      } else if (y >= height - bandY) {
+        const w = 0.5 * (1 - smoothstep(0, 1, (height - 1 - y) / bandY));
+        const p = (((y - (height - bandY)) * width) + x) * 4;
+        r = lerp(r, original[p], w);
+        g = lerp(g, original[p + 1], w);
+        b = lerp(b, original[p + 2], w);
+        a = lerp(a, original[p + 3], w);
+      }
+
+      data[i] = Math.round(r);
+      data[i + 1] = Math.round(g);
+      data[i + 2] = Math.round(b);
+      data[i + 3] = Math.round(a);
+    }
+  }
+
+  return imageData;
+}
+
 function getSymmetryLinePixels(width, height) {
   return {
     a: { x: state.symmetry.a.x * width, y: state.symmetry.a.y * height },
@@ -628,14 +703,15 @@ function extendLineToCanvas(a, b, width, height) {
   };
 }
 
-function updateOutputPreviewSize(width, height) {
+function updateOutputPreviewSize(width, height, viewWidth = width, viewHeight = height, tileCount = 1) {
   const stage = document.querySelector("#previewStage");
   const wrap = stage.parentElement.getBoundingClientRect();
-  const maxSide = Math.max(160, Math.min(wrap.width - 32, wrap.height - 32, 720));
-  const scale = Math.min(maxSide / width, maxSide / height);
-  const cssWidth = Math.max(1, Math.round(width * scale));
-  const cssHeight = Math.max(1, Math.round(height * scale));
-  state.preview = { width, height, cssWidth, cssHeight };
+  const maxWidth = Math.max(160, Math.min(wrap.width - 32, 720));
+  const maxHeight = Math.max(160, Math.min(wrap.height - 32, 720));
+  const scale = Math.min(maxWidth / viewWidth, maxHeight / viewHeight);
+  const cssWidth = Math.max(1, Math.round(viewWidth * scale));
+  const cssHeight = Math.max(1, Math.round(viewHeight * scale));
+  state.preview = { width, height, viewWidth, viewHeight, tileCount, cssWidth, cssHeight };
   stage.style.width = `${cssWidth}px`;
   stage.style.height = `${cssHeight}px`;
   outputCanvas.style.width = `${cssWidth}px`;
@@ -645,15 +721,17 @@ function updateOutputPreviewSize(width, height) {
 }
 
 function drawOutputOverlay() {
-  const { width, height, cssWidth, cssHeight } = state.preview;
+  const { width, height, viewWidth, viewHeight, cssWidth, cssHeight } = state.preview;
   const dpr = window.devicePixelRatio || 1;
   outputOverlay.width = Math.max(1, Math.round(cssWidth * dpr));
   outputOverlay.height = Math.max(1, Math.round(cssHeight * dpr));
   overlayCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
   overlayCtx.clearRect(0, 0, cssWidth, cssHeight);
 
-  if (controls.showGrid.checked || state.editSymmetry) drawOverlayGrid(width, height, cssWidth, cssHeight);
-  if (controls.symmetryOn.checked || state.editSymmetry) drawSymmetryOverlay(width, height, cssWidth, cssHeight);
+  if (controls.showGrid.checked || state.editSymmetry) drawOverlayGrid(viewWidth, viewHeight, cssWidth, cssHeight);
+  if ((controls.symmetryOn.checked || state.editSymmetry) && controls.showSymmetryGuide.checked) {
+    drawSymmetryOverlay(width, height, cssWidth, cssHeight);
+  }
   if (state.editLight) drawLightOverlay(width, height, cssWidth, cssHeight);
 }
 
@@ -683,14 +761,41 @@ function drawOverlayGrid(width, height, cssWidth, cssHeight) {
 }
 
 function drawSymmetryOverlay(width, height, cssWidth, cssHeight) {
-  const line = getSymmetryLinePixels(width, height);
-  const extended = extendLineToCanvas(line.a, line.b, width, height);
-  const a = gridToCss(line.a, width, height, cssWidth, cssHeight);
-  const b = gridToCss(line.b, width, height, cssWidth, cssHeight);
-  const ea = gridToCss(extended.a, width, height, cssWidth, cssHeight);
-  const eb = gridToCss(extended.b, width, height, cssWidth, cssHeight);
-
   overlayCtx.save();
+  const { tileCount } = state.preview;
+  const centerTile = Math.floor(tileCount / 2);
+  const line = getSymmetryLinePixels(width, height);
+
+  for (let ty = 0; ty < tileCount; ty++) {
+    for (let tx = 0; tx < tileCount; tx++) {
+      const shifted = {
+        a: { x: line.a.x + tx * width, y: line.a.y + ty * height },
+        b: { x: line.b.x + tx * width, y: line.b.y + ty * height }
+      };
+      drawOneSymmetryLine(shifted, state.preview.viewWidth, state.preview.viewHeight, cssWidth, cssHeight);
+    }
+  }
+
+  if (state.editSymmetry) {
+    const centerLine = {
+      a: { x: line.a.x + centerTile * width, y: line.a.y + centerTile * height },
+      b: { x: line.b.x + centerTile * width, y: line.b.y + centerTile * height }
+    };
+    const a = gridToCss(centerLine.a, state.preview.viewWidth, state.preview.viewHeight, cssWidth, cssHeight);
+    const b = gridToCss(centerLine.b, state.preview.viewWidth, state.preview.viewHeight, cssWidth, cssHeight);
+    drawOutputHandle(a.x, a.y, "#38bdf8");
+    drawOutputHandle(b.x, b.y, "#38bdf8");
+  }
+  overlayCtx.restore();
+}
+
+function drawOneSymmetryLine(line, viewWidth, viewHeight, cssWidth, cssHeight) {
+  const extended = extendLineToCanvas(line.a, line.b, viewWidth, viewHeight);
+  const a = gridToCss(line.a, viewWidth, viewHeight, cssWidth, cssHeight);
+  const b = gridToCss(line.b, viewWidth, viewHeight, cssWidth, cssHeight);
+  const ea = gridToCss(extended.a, viewWidth, viewHeight, cssWidth, cssHeight);
+  const eb = gridToCss(extended.b, viewWidth, viewHeight, cssWidth, cssHeight);
+
   overlayCtx.strokeStyle = "rgba(255, 255, 255, 0.85)";
   overlayCtx.lineWidth = 5;
   overlayCtx.beginPath();
@@ -711,14 +816,17 @@ function drawSymmetryOverlay(width, height, cssWidth, cssHeight) {
   overlayCtx.moveTo(a.x, a.y);
   overlayCtx.lineTo(b.x, b.y);
   overlayCtx.stroke();
-
-  drawOutputHandle(a.x, a.y, "#38bdf8");
-  drawOutputHandle(b.x, b.y, "#38bdf8");
-  overlayCtx.restore();
 }
 
 function drawLightOverlay(width, height, cssWidth, cssHeight) {
-  const point = gridToCss({ x: state.light.x * width, y: state.light.y * height }, width, height, cssWidth, cssHeight);
+  const centerTile = Math.floor(state.preview.tileCount / 2);
+  const point = gridToCss(
+    { x: state.light.x * width + centerTile * width, y: state.light.y * height + centerTile * height },
+    state.preview.viewWidth,
+    state.preview.viewHeight,
+    cssWidth,
+    cssHeight
+  );
   const radius = Math.min(cssWidth, cssHeight) * 0.28;
 
   overlayCtx.save();
@@ -763,10 +871,12 @@ function gridToCss(point, width, height, cssWidth, cssHeight) {
 
 function pointerToOutputGrid(event) {
   const rect = outputOverlay.getBoundingClientRect();
-  const { width, height } = state.preview;
+  const { width, height, viewWidth, viewHeight } = state.preview;
+  const viewX = clamp(((event.clientX - rect.left) / rect.width) * viewWidth, 0, viewWidth);
+  const viewY = clamp(((event.clientY - rect.top) / rect.height) * viewHeight, 0, viewHeight);
   return {
-    x: clamp(((event.clientX - rect.left) / rect.width) * width, 0, width),
-    y: clamp(((event.clientY - rect.top) / rect.height) * height, 0, height)
+    x: clamp(((viewX % width) + width) % width, 0, width),
+    y: clamp(((viewY % height) + height) % height, 0, height)
   };
 }
 
@@ -922,8 +1032,8 @@ function setOutputPoint(point, which) {
 }
 
 function hitOutputPoint(point) {
-  const { width, height, cssWidth } = state.preview;
-  const radius = 16 / Math.max(1, cssWidth / width);
+  const { width, height, viewWidth, cssWidth } = state.preview;
+  const radius = 16 / Math.max(1, cssWidth / viewWidth);
   const line = getSymmetryLinePixels(width, height);
   const light = {
     x: state.light.x * width,
