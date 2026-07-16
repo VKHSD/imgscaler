@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Image Scaler Lab</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Image Scaler Lab</h1>
+      <p>Crop, scale, clean alpha, mirror, shade, and export tiny game-ready images.</p>
+    </div>
+    <button id="downloadBtn" class="primary">Download PNG</button>
+  </header>
+
+  <main class="workspace">
+    <section class="panel source-panel">
+      <div class="panel-head">
+        <div>
+          <h2>Original</h2>
+          <span id="sourceMeta">Drop an image to begin</span>
+        </div>
+        <label class="file-button">
+          Upload
+          <input id="fileInput" type="file" accept="image/*">
+        </label>
+      </div>
+
+      <div id="dropZone" class="drop-zone">
+        <canvas id="sourceCanvas"></canvas>
+        <div id="dropHint" class="drop-hint">
+          <strong>Drop image here</strong>
+          <span>PNG, JPG, WebP, GIF frame, anything browser-readable.</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel output-panel">
+      <div class="panel-head">
+        <div>
+          <h2>Output</h2>
+          <span id="outputMeta">Default export: 16 x 16</span>
+        </div>
+        <button id="renderBtn">Render</button>
+      </div>
+
+      <div class="preview-wrap">
+        <canvas id="outputCanvas"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <aside class="toolbox">
+    <section>
+      <h3>Crop</h3>
+      <div class="control-row">
+        <button id="cropBtn" class="toggle">Crop select</button>
+        <button id="resetCropBtn">Reset</button>
+      </div>
+      <label class="switch">
+        <input id="squareCrop" type="checkbox" checked>
+        <span>Square crop</span>
+      </label>
+    </section>
+
+    <section>
+      <h3>Size</h3>
+      <div class="field-grid">
+        <label>
+          Width
+          <input id="outWidth" class="drag-number" type="number" min="1" max="4096" value="16">
+        </label>
+        <label>
+          Height
+          <input id="outHeight" class="drag-number" type="number" min="1" max="4096" value="16">
+        </label>
+      </div>
+      <label class="switch">
+        <input id="lockRatio" type="checkbox" checked>
+        <span>1:1 locked</span>
+      </label>
+      <label class="switch">
+        <input id="pixelated" type="checkbox" checked>
+        <span>Sharp pixel scaling</span>
+      </label>
+      <label class="switch">
+        <input id="showGrid" type="checkbox">
+        <span>Show grid</span>
+      </label>
+    </section>
+
+    <section>
+      <h3>Cleanup</h3>
+      <div class="control-row">
+        <button id="pickAlphaBtn" class="toggle">Pick alpha color</button>
+        <input id="alphaColor" type="color" value="#ffffff" title="Color to make transparent">
+      </div>
+      <label class="switch">
+        <input id="alphaOn" type="checkbox">
+        <span>Color to alpha</span>
+      </label>
+      <label>
+        Alpha tolerance
+        <input id="alphaTolerance" class="drag-number" type="number" min="0" max="255" value="36">
+      </label>
+      <label class="switch">
+        <input id="removeBg" type="checkbox">
+        <span>Remove edge background</span>
+      </label>
+      <label>
+        Background tolerance
+        <input id="bgTolerance" class="drag-number" type="number" min="0" max="255" value="42">
+      </label>
+      <label class="switch">
+        <input id="paletteOn" type="checkbox" checked>
+        <span>Limit palette</span>
+      </label>
+      <label>
+        Max colors
+        <input id="paletteColors" class="drag-number" type="number" min="2" max="256" value="16">
+      </label>
+    </section>
+
+    <section>
+      <h3>Effects</h3>
+      <label class="switch">
+        <input id="edgeDetect" type="checkbox">
+        <span>Edge detection</span>
+      </label>
+      <label>
+        Edge strength
+        <input id="edgeStrength" class="drag-number" type="number" min="0" max="300" value="80">
+      </label>
+      <label class="switch">
+        <input id="symmetryOn" type="checkbox">
+        <span>Symmetry line</span>
+      </label>
+      <label>
+        Symmetry angle
+        <input id="symmetryAngle" class="drag-number" type="number" min="-180" max="180" value="90">
+      </label>
+      <label class="switch">
+        <input id="shadeOn" type="checkbox">
+        <span>Fake lighting</span>
+      </label>
+      <label>
+        Light strength
+        <input id="lightStrength" class="drag-number" type="number" min="-100" max="100" value="34">
+      </label>
+    </section>
+  </aside>
+
+  <script src="app.js"></script>
+</body>
+</html>
