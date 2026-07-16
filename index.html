@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Image Scaler Lab</title>
-  <link rel="stylesheet" href="styles.css?v=20260716-gridline">
+  <link rel="stylesheet" href="styles.css?v=20260716-tileview">
 </head>
 <body>
   <header class="topbar">
@@ -93,6 +93,10 @@
         <input id="showGrid" type="checkbox">
         <span>Show grid</span>
       </label>
+      <label class="switch">
+        <input id="tilePreview" type="checkbox">
+        <span>Tile preview</span>
+      </label>
     </section>
 
     <section>
@@ -141,10 +145,22 @@
         <input id="symmetryOn" type="checkbox">
         <span>Symmetry line</span>
       </label>
+      <label class="switch">
+        <input id="showSymmetryGuide" type="checkbox" checked>
+        <span>Show line guide</span>
+      </label>
       <div class="control-row">
         <button id="editSymmetryBtn" class="toggle">Edit line</button>
         <button id="resetSymmetryBtn">Reset</button>
       </div>
+      <label class="switch">
+        <input id="seamlessOn" type="checkbox">
+        <span>Experimental seamless tile</span>
+      </label>
+      <label>
+        Seam blend
+        <input id="seamBlend" class="drag-number" type="number" min="1" max="50" value="18">
+      </label>
       <label class="switch">
         <input id="shadeOn" type="checkbox">
         <span>Fake lighting</span>
@@ -158,6 +174,6 @@
     </aside>
   </div>
 
-  <script src="app.js?v=20260716-gridline"></script>
+  <script src="app.js?v=20260716-tileview"></script>
 </body>
 </html>
