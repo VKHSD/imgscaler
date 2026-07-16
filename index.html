@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Image Scaler Lab</title>
-  <link rel="stylesheet" href="styles.css?v=20260716-qol">
+  <link rel="stylesheet" href="styles.css?v=20260716-gridline">
 </head>
 <body>
   <header class="topbar">
@@ -48,7 +48,10 @@
         </div>
 
         <div class="preview-wrap">
-          <canvas id="outputCanvas"></canvas>
+          <div id="previewStage" class="preview-stage">
+            <canvas id="outputCanvas"></canvas>
+            <canvas id="outputOverlay"></canvas>
+          </div>
         </div>
       </section>
     </main>
@@ -155,6 +158,6 @@
     </aside>
   </div>
 
-  <script src="app.js?v=20260716-qol"></script>
+  <script src="app.js?v=20260716-gridline"></script>
 </body>
 </html>
