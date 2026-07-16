@@ -14,13 +14,16 @@ A small GitHub Pages image tool for sprite and texture work.
 - Sharp pixel scaling
 - Optional preview grid
 - Black pixel-boundary grid, automatically shown while editing symmetry
+- 3 x 3 tile preview that keeps the same preview footprint
 - Color-to-alpha picker
 - Edge-connected background removal
 - Palette limiting, enabled by default at 16 colors
 - Edge detection
 - Symmetry line mirroring with two high-resolution draggable output points
+- Symmetry guide can be hidden while the symmetry effect stays active
 - Sub-pixel symmetry reflection with a small blend across the line
 - Luminance-based fake relighting with a draggable output light point
+- Experimental seamless tile blend for softly connecting wrapped edges
 - PNG download
 
 Numeric fields can be dragged up and down to tune values quickly.
