@@ -172,7 +172,28 @@ canvas {
 
 #outputCanvas {
   background: rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+
+.preview-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  max-width: 100%;
+  max-height: calc(min(72vh, 720px) - 2rem);
+}
+
+#outputCanvas,
+#outputOverlay {
+  grid-area: 1 / 1;
+}
+
+#outputOverlay {
+  position: relative;
+  z-index: 2;
+  image-rendering: auto;
   cursor: crosshair;
+  background: transparent;
 }
 
 .drop-hint {
