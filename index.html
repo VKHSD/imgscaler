@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Image Scaler Lab</title>
-  <link rel="stylesheet" href="styles.css?v=20260716-tileview">
+  <link rel="stylesheet" href="styles.css?v=20260716-rotatecrop">
 </head>
 <body>
   <header class="topbar">
@@ -67,6 +67,11 @@
         <input id="squareCrop" type="checkbox" checked>
         <span>Square crop</span>
       </label>
+      <label>
+        Crop angle
+        <input id="cropAngle" class="drag-number" type="number" min="-180" max="180" value="0">
+      </label>
+      <button id="resetToolsBtn" class="danger">Reset tools</button>
     </section>
 
     <section>
@@ -174,6 +179,6 @@
     </aside>
   </div>
 
-  <script src="app.js?v=20260716-tileview"></script>
+  <script src="app.js?v=20260716-rotatecrop"></script>
 </body>
 </html>
