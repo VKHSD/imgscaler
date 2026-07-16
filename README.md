@@ -7,7 +7,9 @@ A small GitHub Pages image tool for sprite and texture work.
 - Drag-and-drop image loading
 - Original image preview with mouse crop selection
 - Draggable crop box with handles and rule-of-thirds guides
+- Rotatable crop box with angle input and rotate handle
 - Square or freeform crop mode
+- Reset tools button that keeps the loaded image
 - Output-only processing, leaving the original untouched
 - Default 16 x 16 export with editable width and height
 - Optional 1:1 size lock
