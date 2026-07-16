@@ -15,48 +15,49 @@
     <button id="downloadBtn" class="primary">Download PNG</button>
   </header>
 
-  <main class="workspace">
-    <section class="panel source-panel">
-      <div class="panel-head">
-        <div>
-          <h2>Original</h2>
-          <span id="sourceMeta">Drop an image to begin</span>
+  <div class="app-grid">
+    <main class="workspace">
+      <section class="panel source-panel">
+        <div class="panel-head">
+          <div>
+            <h2>Original</h2>
+            <span id="sourceMeta">Drop an image to begin</span>
+          </div>
+          <label class="file-button">
+            Upload
+            <input id="fileInput" type="file" accept="image/*">
+          </label>
         </div>
-        <label class="file-button">
-          Upload
-          <input id="fileInput" type="file" accept="image/*">
-        </label>
-      </div>
 
-      <div id="dropZone" class="drop-zone">
-        <canvas id="sourceCanvas"></canvas>
-        <div id="dropHint" class="drop-hint">
-          <strong>Drop image here</strong>
-          <span>PNG, JPG, WebP, GIF frame, anything browser-readable.</span>
+        <div id="dropZone" class="drop-zone">
+          <canvas id="sourceCanvas"></canvas>
+          <div id="dropHint" class="drop-hint">
+            <strong>Drop image here</strong>
+            <span>PNG, JPG, WebP, GIF frame, anything browser-readable.</span>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section class="panel output-panel">
-      <div class="panel-head">
-        <div>
-          <h2>Output</h2>
-          <span id="outputMeta">Default export: 16 x 16</span>
+      <section class="panel output-panel">
+        <div class="panel-head">
+          <div>
+            <h2>Output</h2>
+            <span id="outputMeta">Default export: 16 x 16</span>
+          </div>
+          <button id="renderBtn">Render</button>
         </div>
-        <button id="renderBtn">Render</button>
-      </div>
 
-      <div class="preview-wrap">
-        <canvas id="outputCanvas"></canvas>
-      </div>
-    </section>
-  </main>
+        <div class="preview-wrap">
+          <canvas id="outputCanvas"></canvas>
+        </div>
+      </section>
+    </main>
 
-  <aside class="toolbox">
+    <aside class="toolbox">
     <section>
       <h3>Crop</h3>
       <div class="control-row">
-        <button id="cropBtn" class="toggle">Crop select</button>
+        <button id="cropBtn" class="toggle active">Edit crop</button>
         <button id="resetCropBtn">Reset</button>
       </div>
       <label class="switch">
@@ -137,20 +138,22 @@
         <input id="symmetryOn" type="checkbox">
         <span>Symmetry line</span>
       </label>
-      <label>
-        Symmetry angle
-        <input id="symmetryAngle" class="drag-number" type="number" min="-180" max="180" value="90">
-      </label>
+      <div class="control-row">
+        <button id="editSymmetryBtn" class="toggle">Edit line</button>
+        <button id="resetSymmetryBtn">Reset</button>
+      </div>
       <label class="switch">
         <input id="shadeOn" type="checkbox">
         <span>Fake lighting</span>
       </label>
+      <button id="editLightBtn" class="toggle">Edit light point</button>
       <label>
         Light strength
         <input id="lightStrength" class="drag-number" type="number" min="-100" max="100" value="34">
       </label>
     </section>
-  </aside>
+    </aside>
+  </div>
 
   <script src="app.js"></script>
 </body>
