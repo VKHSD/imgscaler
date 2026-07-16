@@ -6,6 +6,7 @@ A small GitHub Pages image tool for sprite and texture work.
 
 - Drag-and-drop image loading
 - Original image preview with mouse crop selection
+- Draggable crop box with handles and rule-of-thirds guides
 - Square or freeform crop mode
 - Output-only processing, leaving the original untouched
 - Default 16 x 16 export with editable width and height
@@ -16,8 +17,8 @@ A small GitHub Pages image tool for sprite and texture work.
 - Edge-connected background removal
 - Palette limiting, enabled by default at 16 colors
 - Edge detection
-- Symmetry line mirroring
-- Simple fake light shading
+- Symmetry line mirroring with two draggable output points
+- Simple fake light shading with a draggable output light point
 - PNG download
 
 Numeric fields can be dragged up and down to tune values quickly.
