@@ -54,6 +54,7 @@ const controls = {
   animationFps: document.querySelector("#animationFps"),
   animationLength: document.querySelector("#animationLength"),
   animationLoop: document.querySelector("#animationLoop"),
+  sheetLayout: document.querySelector("#sheetLayout"),
   animationInterpolation: document.querySelector("#animationInterpolation"),
   playAnimationBtn: document.querySelector("#playAnimationBtn"),
   restartAnimationBtn: document.querySelector("#restartAnimationBtn"),
@@ -1604,6 +1605,17 @@ function getAnimationSequence() {
   return sequence;
 }
 
+function getSheetGrid(frameCount, cellWidth, cellHeight, maxDimension = 16384) {
+  if (controls.sheetLayout.value === "vertical") {
+    return { columns: 1, rows: frameCount };
+  }
+  if (controls.sheetLayout.value === "horizontal") {
+    return { columns: frameCount, rows: 1 };
+  }
+  const columns = Math.max(1, Math.min(frameCount, Math.floor(maxDimension / cellWidth)));
+  return { columns, rows: Math.ceil(frameCount / columns) };
+}
+
 async function downloadSpriteSheet() {
   if (!state.image || !state.animation.keyframes.length) return;
   const wasPlaying = state.animation.playing;
@@ -1612,7 +1624,7 @@ async function downloadSpriteSheet() {
   pauseAnimation();
 
   const sequence = getAnimationSequence();
-  const maxDimension = 8192;
+  const maxDimension = 16384;
   let cellWidth = 1;
   let cellHeight = 1;
 
@@ -1624,9 +1636,8 @@ async function downloadSpriteSheet() {
     cellHeight = Math.max(cellHeight, cleanOutputCanvas.height);
   }
 
-  const columns = Math.max(1, Math.min(sequence.length, Math.floor(maxDimension / cellWidth)));
-  const rows = Math.ceil(sequence.length / columns);
-  if (columns < 1 || rows * cellHeight > maxDimension) {
+  const { columns, rows } = getSheetGrid(sequence.length, cellWidth, cellHeight, maxDimension);
+  if (columns * cellWidth > maxDimension || rows * cellHeight > maxDimension) {
     window.alert("This sprite sheet is too large. Reduce the frame count or output size.");
     state.animation.direction = previousDirection;
     setAnimationFrame(previousFrame);
@@ -1653,7 +1664,7 @@ async function downloadSpriteSheet() {
   const blob = await new Promise(resolve => sheet.toBlob(resolve, "image/png"));
   if (blob) {
     const link = document.createElement("a");
-    link.download = `${state.fileName}-${getAnimationFps()}fps-${controls.animationLoop.value}-sheet.png`;
+    link.download = `${state.fileName}-${getAnimationFps()}fps-${controls.animationLoop.value}-${controls.sheetLayout.value}-sheet.png`;
     link.href = URL.createObjectURL(blob);
     link.click();
     setTimeout(() => URL.revokeObjectURL(link.href), 1000);
