@@ -37,6 +37,7 @@ A small GitHub Pages image tool for sprite and texture work.
 - Smooth RGB color blending and shortest-path angle interpolation
 - Loop and boomerang playback
 - PNG sprite-sheet export using the selected playback sequence, including variable output sizes
+- Vertical sprite sheets by default, with optional horizontal and packed-grid layouts
 - PNG download
 
 Numeric fields can be dragged up and down to tune values quickly.
