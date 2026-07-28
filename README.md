@@ -17,6 +17,7 @@ A small GitHub Pages image tool for sprite and texture work.
 - Optional preview grid
 - Black pixel-boundary grid, automatically shown while editing symmetry
 - 3 x 3 tile preview that keeps the same preview footprint
+- Compact tabbed tools sized to keep the main workspace on a 1920 x 1080 display
 - Color-to-alpha picker
 - Edge-connected background removal
 - Palette limiting, enabled by default at 16 colors
@@ -25,7 +26,14 @@ A small GitHub Pages image tool for sprite and texture work.
 - Symmetry guide can be hidden while the symmetry effect stays active
 - Sub-pixel symmetry reflection with a small blend across the line
 - Luminance-based fake relighting with a draggable output light point
-- Experimental seamless tile blend for softly connecting wrapped edges
+- Selectable seamless-tile algorithms:
+  - Gentle wrapped-edge crossfade
+  - Strong opposite-edge reconciliation with exact matching outer pixels
+- Separate animation mode with FPS and frame-count controls
+- Multi-property keyframes for crop position/angle, lighting, seams, edges, and alpha
+- Smooth, linear, or held keyframe interpolation
+- Loop and boomerang playback
+- PNG sprite-sheet export using the selected playback sequence
 - PNG download
 
 Numeric fields can be dragged up and down to tune values quickly.
