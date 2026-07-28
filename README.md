@@ -29,11 +29,14 @@ A small GitHub Pages image tool for sprite and texture work.
 - Selectable seamless-tile algorithms:
   - Gentle wrapped-edge crossfade
   - Strong opposite-edge reconciliation with exact matching outer pixels
-- Separate animation mode with FPS and frame-count controls
-- Multi-property keyframes for crop position/angle, lighting, seams, edges, and alpha
+- Integrated bottom animation timeline that keeps all normal editing tools live
+- Full-state keyframes captured directly from the actual editor controls
+- Crop position/size/rotation, output size, symmetry points, lighting, colors, alpha, cleanup, palette, edge, seamless, and toggle states are animatable
+- Optional Auto-key for capturing edits immediately on the current frame
 - Smooth, linear, or held keyframe interpolation
+- Smooth RGB color blending and shortest-path angle interpolation
 - Loop and boomerang playback
-- PNG sprite-sheet export using the selected playback sequence
+- PNG sprite-sheet export using the selected playback sequence, including variable output sizes
 - PNG download
 
 Numeric fields can be dragged up and down to tune values quickly.
