@@ -59,8 +59,7 @@ const controls = {
   restartAnimationBtn: document.querySelector("#restartAnimationBtn"),
   animationFrame: document.querySelector("#animationFrame"),
   animationFrameNumber: document.querySelector("#animationFrameNumber"),
-  animationProperty: document.querySelector("#animationProperty"),
-  animationValue: document.querySelector("#animationValue"),
+  animationAutoKey: document.querySelector("#animationAutoKey"),
   addKeyframeBtn: document.querySelector("#addKeyframeBtn"),
   deleteKeyframeBtn: document.querySelector("#deleteKeyframeBtn"),
   animationStatus: document.querySelector("#animationStatus"),
@@ -89,125 +88,14 @@ const state = {
     mode: false,
     playing: false,
     frame: 0,
-    keyframes: {},
-    baseValues: {},
+    keyframes: [],
+    baseSnapshot: null,
+    applying: false,
+    dirty: false,
     raf: 0,
     lastTime: 0,
     accumulator: 0,
     direction: 1
-  }
-};
-
-const animationProperties = {
-  cropX: {
-    label: "Crop X",
-    min: 0,
-    max: 100,
-    step: 0.1,
-    get: () => {
-      const crop = getCrop();
-      if (!crop || !state.image) return 0;
-      return state.image.width <= crop.w ? 0 : (crop.x / (state.image.width - crop.w)) * 100;
-    },
-    set: value => {
-      if (!state.image) return;
-      const crop = getCrop();
-      state.crop = normalizeCrop({ ...crop, x: (state.image.width - crop.w) * value / 100 });
-    }
-  },
-  cropY: {
-    label: "Crop Y",
-    min: 0,
-    max: 100,
-    step: 0.1,
-    get: () => {
-      const crop = getCrop();
-      if (!crop || !state.image) return 0;
-      return state.image.height <= crop.h ? 0 : (crop.y / (state.image.height - crop.h)) * 100;
-    },
-    set: value => {
-      if (!state.image) return;
-      const crop = getCrop();
-      state.crop = normalizeCrop({ ...crop, y: (state.image.height - crop.h) * value / 100 });
-    }
-  },
-  cropAngle: {
-    label: "Crop angle",
-    min: -180,
-    max: 180,
-    step: 0.1,
-    get: () => parseFloat(controls.cropAngle.value) || 0,
-    set: value => {
-      const angle = normalizeAngle(value);
-      controls.cropAngle.value = Math.round(angle * 10) / 10;
-      if (state.crop) state.crop = normalizeCrop({ ...state.crop, angle });
-    }
-  },
-  lightX: {
-    label: "Light X",
-    min: 0,
-    max: 100,
-    step: 0.1,
-    get: () => state.light.x * 100,
-    set: value => {
-      state.light.x = clamp(value / 100, 0, 1);
-      controls.shadeOn.checked = true;
-    }
-  },
-  lightY: {
-    label: "Light Y",
-    min: 0,
-    max: 100,
-    step: 0.1,
-    get: () => state.light.y * 100,
-    set: value => {
-      state.light.y = clamp(value / 100, 0, 1);
-      controls.shadeOn.checked = true;
-    }
-  },
-  lightStrength: {
-    label: "Light strength",
-    min: -100,
-    max: 100,
-    step: 1,
-    get: () => parseFloat(controls.lightStrength.value) || 0,
-    set: value => {
-      controls.lightStrength.value = value;
-      controls.shadeOn.checked = true;
-    }
-  },
-  seamBlend: {
-    label: "Seam blend",
-    min: 1,
-    max: 50,
-    step: 1,
-    get: () => parseFloat(controls.seamBlend.value) || 18,
-    set: value => {
-      controls.seamBlend.value = value;
-      controls.seamlessOn.checked = true;
-    }
-  },
-  edgeStrength: {
-    label: "Edge strength",
-    min: 0,
-    max: 300,
-    step: 1,
-    get: () => parseFloat(controls.edgeStrength.value) || 0,
-    set: value => {
-      controls.edgeStrength.value = value;
-      controls.edgeDetect.checked = true;
-    }
-  },
-  alphaTolerance: {
-    label: "Alpha tolerance",
-    min: 0,
-    max: 255,
-    step: 1,
-    get: () => parseFloat(controls.alphaTolerance.value) || 0,
-    set: value => {
-      controls.alphaTolerance.value = value;
-      controls.alphaOn.checked = true;
-    }
   }
 };
 
@@ -251,6 +139,7 @@ function makeDefaultCrop() {
 function resetCrop() {
   controls.cropAngle.value = 0;
   state.crop = makeDefaultCrop();
+  markAnimationEdited();
   drawSource();
   renderOutput();
 }
@@ -1287,6 +1176,33 @@ function sampleOriginalPixel(x, y) {
   return sampleCtx.getImageData(0, 0, 1, 1).data;
 }
 
+const ANIMATED_CONTROL_KEYS = [
+  "squareCrop",
+  "cropAngle",
+  "outWidth",
+  "outHeight",
+  "lockRatio",
+  "pixelated",
+  "showGrid",
+  "tilePreview",
+  "alphaOn",
+  "alphaColor",
+  "alphaTolerance",
+  "removeBg",
+  "bgTolerance",
+  "paletteOn",
+  "paletteColors",
+  "edgeDetect",
+  "edgeStrength",
+  "symmetryOn",
+  "showSymmetryGuide",
+  "seamlessOn",
+  "seamAlgorithm",
+  "seamBlend",
+  "shadeOn",
+  "lightStrength"
+];
+
 function setEditorMode(mode) {
   const animationMode = mode === "animation";
   state.animation.mode = animationMode;
@@ -1295,7 +1211,7 @@ function setEditorMode(mode) {
   controls.animationModeBtn.classList.toggle("active", animationMode);
 
   if (animationMode) {
-    captureAnimationBaseValues();
+    if (!state.animation.baseSnapshot) state.animation.baseSnapshot = captureEditorSnapshot();
     syncAnimationEditor();
   } else {
     pauseAnimation();
@@ -1303,21 +1219,143 @@ function setEditorMode(mode) {
   requestAnimationFrame(resizeOutputPreview);
 }
 
-function captureAnimationBaseValues(force = false) {
-  for (const [key, property] of Object.entries(animationProperties)) {
-    if (force || state.animation.baseValues[key] === undefined) {
-      state.animation.baseValues[key] = property.get();
+function captureEditorSnapshot() {
+  const controlValues = {};
+  for (const key of ANIMATED_CONTROL_KEYS) {
+    const control = controls[key];
+    if (!control) continue;
+    if (control.type === "checkbox") controlValues[key] = control.checked;
+    else if (control.type === "number" || control.type === "range") {
+      controlValues[key] = parseFloat(control.value) || 0;
+    } else {
+      controlValues[key] = control.value;
     }
   }
+
+  return {
+    controls: controlValues,
+    crop: state.crop ? { ...state.crop } : null,
+    symmetry: {
+      a: { ...state.symmetry.a },
+      b: { ...state.symmetry.b }
+    },
+    light: { ...state.light }
+  };
+}
+
+function cloneSnapshot(snapshot) {
+  return snapshot ? JSON.parse(JSON.stringify(snapshot)) : null;
+}
+
+function applyEditorSnapshot(snapshot) {
+  if (!snapshot) return;
+  state.animation.applying = true;
+
+  for (const [key, value] of Object.entries(snapshot.controls || {})) {
+    const control = controls[key];
+    if (!control) continue;
+    if (control.type === "checkbox") control.checked = Boolean(value);
+    else control.value = value;
+  }
+
+  if (snapshot.crop && state.image) {
+    state.crop = normalizeAnimatedCrop(snapshot.crop);
+    controls.cropAngle.value = Math.round((state.crop.angle || 0) * 100) / 100;
+  }
+  if (snapshot.symmetry) {
+    state.symmetry = {
+      a: { ...snapshot.symmetry.a },
+      b: { ...snapshot.symmetry.b }
+    };
+  }
+  if (snapshot.light) state.light = { ...snapshot.light };
+
+  updateSeamAlgorithmNote();
+  state.animation.applying = false;
+}
+
+function normalizeAnimatedCrop(crop) {
+  if (!state.image) return crop;
+  let w = clamp(Number(crop.w) || 1, 1, state.image.width);
+  let h = clamp(Number(crop.h) || 1, 1, state.image.height);
+  if (controls.squareCrop.checked) {
+    const side = Math.min(w, h);
+    w = side;
+    h = side;
+  }
+  return {
+    x: clamp(Number(crop.x) || 0, 0, state.image.width - w),
+    y: clamp(Number(crop.y) || 0, 0, state.image.height - h),
+    w,
+    h,
+    angle: normalizeAngle(Number(crop.angle) || 0)
+  };
+}
+
+function interpolateEditorSnapshots(a, b, t) {
+  if (!a) return cloneSnapshot(b);
+  if (!b) return cloneSnapshot(a);
+  const result = cloneSnapshot(a);
+
+  for (const key of ANIMATED_CONTROL_KEYS) {
+    const av = a.controls?.[key];
+    const bv = b.controls?.[key];
+    if (av === undefined || bv === undefined) continue;
+    if (key === "alphaColor") result.controls[key] = lerpHexColor(av, bv, t);
+    else if (key === "cropAngle") result.controls[key] = lerpAngle(av, bv, t);
+    else if (typeof av === "number" && typeof bv === "number") result.controls[key] = lerp(av, bv, t);
+    else result.controls[key] = t >= 1 ? bv : av;
+  }
+
+  if (a.crop && b.crop) {
+    result.crop = {
+      x: lerp(a.crop.x, b.crop.x, t),
+      y: lerp(a.crop.y, b.crop.y, t),
+      w: lerp(a.crop.w, b.crop.w, t),
+      h: lerp(a.crop.h, b.crop.h, t),
+      angle: lerpAngle(a.crop.angle || 0, b.crop.angle || 0, t)
+    };
+  }
+
+  result.symmetry = {
+    a: {
+      x: lerp(a.symmetry.a.x, b.symmetry.a.x, t),
+      y: lerp(a.symmetry.a.y, b.symmetry.a.y, t)
+    },
+    b: {
+      x: lerp(a.symmetry.b.x, b.symmetry.b.x, t),
+      y: lerp(a.symmetry.b.y, b.symmetry.b.y, t)
+    }
+  };
+  result.light = {
+    x: lerp(a.light.x, b.light.x, t),
+    y: lerp(a.light.y, b.light.y, t)
+  };
+  return result;
+}
+
+function lerpHexColor(a, b, t) {
+  const ac = hexToRgb(a || "#000000");
+  const bc = hexToRgb(b || "#000000");
+  return rgbToHex(
+    Math.round(lerp(ac.r, bc.r, t)),
+    Math.round(lerp(ac.g, bc.g, t)),
+    Math.round(lerp(ac.b, bc.b, t))
+  );
+}
+
+function lerpAngle(a, b, t) {
+  const delta = normalizeAngle((Number(b) || 0) - (Number(a) || 0));
+  return normalizeAngle((Number(a) || 0) + delta * t);
 }
 
 function resetAnimationProject() {
   pauseAnimation();
   state.animation.frame = 0;
   state.animation.direction = 1;
-  state.animation.keyframes = {};
-  state.animation.baseValues = {};
-  captureAnimationBaseValues(true);
+  state.animation.keyframes = [];
+  state.animation.baseSnapshot = captureEditorSnapshot();
+  state.animation.dirty = false;
   syncAnimationEditor();
 }
 
@@ -1341,9 +1379,12 @@ function setAnimationFrame(frame, render = true) {
   controls.animationFrameNumber.max = length;
   controls.animationFrameNumber.value = state.animation.frame + 1;
   controls.timelineEndLabel.textContent = length;
-  controls.animationStatus.textContent = `Frame ${state.animation.frame + 1} / ${length}`;
-  applyAnimationFrame(state.animation.frame);
-  syncAnimationValue();
+
+  const snapshot = getAnimationSnapshotAtFrame(state.animation.frame);
+  if (snapshot) applyEditorSnapshot(snapshot);
+  state.animation.dirty = false;
+  updateAnimationStatus();
+  updateKeyframeSummary();
   updateTimelineMarkerSelection();
 
   if (render) {
@@ -1352,44 +1393,36 @@ function setAnimationFrame(frame, render = true) {
   }
 }
 
-function applyAnimationFrame(frame) {
-  for (const key of Object.keys(state.animation.keyframes)) {
-    const frames = state.animation.keyframes[key];
-    if (!frames || !frames.length || !animationProperties[key]) continue;
-    animationProperties[key].set(getAnimationValueAtFrame(key, frame));
-  }
-}
-
-function getAnimationValueAtFrame(key, frame) {
-  const frames = [...(state.animation.keyframes[key] || [])].sort((a, b) => a.frame - b.frame);
-  const base = state.animation.baseValues[key] ?? animationProperties[key].get();
-  if (!frames.length) return base;
+function getAnimationSnapshotAtFrame(frame) {
+  const frames = [...state.animation.keyframes].sort((a, b) => a.frame - b.frame);
+  if (!frames.length) return null;
   const exact = frames.find(item => item.frame === frame);
-  if (exact) return exact.value;
-  if (frame <= frames[0].frame) {
-    if (frames[0].frame === 0) return frames[0].value;
-    return interpolateAnimationValue(
-      { frame: 0, value: base },
+  if (exact) return cloneSnapshot(exact.snapshot);
+
+  if (frame < frames[0].frame) {
+    if (frames[0].frame === 0) return cloneSnapshot(frames[0].snapshot);
+    return interpolateSnapshotFrames(
+      { frame: 0, snapshot: state.animation.baseSnapshot },
       frames[0],
       frame
     );
   }
-  if (frame >= frames[frames.length - 1].frame) return frames[frames.length - 1].value;
+  if (frame > frames[frames.length - 1].frame) return cloneSnapshot(frames[frames.length - 1].snapshot);
 
   for (let i = 0; i < frames.length - 1; i++) {
-    if (frame >= frames[i].frame && frame <= frames[i + 1].frame) {
-      return interpolateAnimationValue(frames[i], frames[i + 1], frame);
+    if (frame > frames[i].frame && frame < frames[i + 1].frame) {
+      return interpolateSnapshotFrames(frames[i], frames[i + 1], frame);
     }
   }
-  return base;
+  return null;
 }
 
-function interpolateAnimationValue(a, b, frame) {
-  if (b.frame === a.frame) return b.value;
+function interpolateSnapshotFrames(a, b, frame) {
+  if (b.frame === a.frame) return cloneSnapshot(b.snapshot);
   let t = clamp((frame - a.frame) / (b.frame - a.frame), 0, 1);
   if (controls.animationInterpolation.value === "hold") t = 0;
   if (controls.animationInterpolation.value === "smooth") t = smootherstep(t);
-  return lerp(a.value, b.value, t);
+  return interpolateEditorSnapshots(a.snapshot, b.snapshot, t);
 }
 
 function syncAnimationEditor() {
@@ -1399,106 +1432,100 @@ function syncAnimationEditor() {
   controls.animationFrameNumber.max = length;
   if (state.animation.frame >= length) state.animation.frame = length - 1;
   setAnimationFrame(state.animation.frame, false);
-  configureAnimationValueInput();
   updateKeyframeSummary();
   renderTimelineMarkers();
-}
-
-function configureAnimationValueInput() {
-  const property = animationProperties[controls.animationProperty.value];
-  if (!property) return;
-  controls.animationValue.min = property.min;
-  controls.animationValue.max = property.max;
-  controls.animationValue.step = property.step;
-  syncAnimationValue();
-}
-
-function syncAnimationValue() {
-  const key = controls.animationProperty.value;
-  const property = animationProperties[key];
-  if (!property) return;
-  const frames = state.animation.keyframes[key] || [];
-  const value = frames.length
-    ? getAnimationValueAtFrame(key, state.animation.frame)
-    : property.get();
-  controls.animationValue.value = Math.round(value * 100) / 100;
-}
-
-function setSelectedAnimationValue(value) {
-  const key = controls.animationProperty.value;
-  const property = animationProperties[key];
-  if (!property) return;
-  const clamped = clamp(parseFloat(value) || 0, property.min, property.max);
-  controls.animationValue.value = clamped;
-  property.set(clamped);
-  drawSource();
-  renderOutput();
 }
 
 function setAnimationKeyframe() {
-  const key = controls.animationProperty.value;
-  const property = animationProperties[key];
-  if (!property) return;
-  const value = clamp(parseFloat(controls.animationValue.value) || 0, property.min, property.max);
-  const frames = state.animation.keyframes[key] || [];
-  const existing = frames.find(item => item.frame === state.animation.frame);
-  if (existing) existing.value = value;
-  else frames.push({ frame: state.animation.frame, value });
-  frames.sort((a, b) => a.frame - b.frame);
-  state.animation.keyframes[key] = frames;
-  property.set(value);
+  if (!state.animation.baseSnapshot) state.animation.baseSnapshot = captureEditorSnapshot();
+  const snapshot = captureEditorSnapshot();
+  const existing = state.animation.keyframes.find(item => item.frame === state.animation.frame);
+  if (existing) existing.snapshot = snapshot;
+  else state.animation.keyframes.push({ frame: state.animation.frame, snapshot });
+  state.animation.keyframes.sort((a, b) => a.frame - b.frame);
+  state.animation.dirty = false;
   updateKeyframeSummary();
   renderTimelineMarkers();
-  renderOutput();
+  updateAnimationStatus();
 }
 
 function deleteAnimationKeyframe() {
-  const key = controls.animationProperty.value;
-  const frames = state.animation.keyframes[key] || [];
-  state.animation.keyframes[key] = frames.filter(item => item.frame !== state.animation.frame);
+  state.animation.keyframes = state.animation.keyframes.filter(item => item.frame !== state.animation.frame);
+  state.animation.dirty = false;
   updateKeyframeSummary();
+  renderTimelineMarkers();
   setAnimationFrame(state.animation.frame);
 }
 
+function markAnimationEdited(allowAutoKey = true) {
+  if (!state.animation.mode || state.animation.applying || state.animation.playing) return;
+  state.animation.dirty = true;
+  if (allowAutoKey && controls.animationAutoKey.checked) {
+    setAnimationKeyframe();
+  } else {
+    updateAnimationStatus();
+    updateKeyframeSummary();
+  }
+}
+
+function commitAutoKeyIfNeeded() {
+  if (state.animation.mode && state.animation.dirty && controls.animationAutoKey.checked) {
+    setAnimationKeyframe();
+  }
+}
+
+function isAnimatableControl(control) {
+  return ANIMATED_CONTROL_KEYS.some(key => controls[key] === control);
+}
+
+function currentFrameKeyframe() {
+  return state.animation.keyframes.find(item => item.frame === state.animation.frame) || null;
+}
+
+function updateAnimationStatus() {
+  const keyed = Boolean(currentFrameKeyframe());
+  controls.animationStatus.classList.toggle("dirty", state.animation.dirty);
+  controls.animationStatus.classList.toggle("keyed", keyed && !state.animation.dirty);
+  controls.animationStatus.textContent = state.animation.dirty
+    ? `Frame ${state.animation.frame + 1} / ${getAnimationLength()} • Edited`
+    : keyed
+      ? `Frame ${state.animation.frame + 1} / ${getAnimationLength()} • Keyed`
+      : `Frame ${state.animation.frame + 1} / ${getAnimationLength()}`;
+  controls.addKeyframeBtn.textContent = keyed ? "Update full state" : "Capture full state";
+}
+
 function updateKeyframeSummary() {
-  const key = controls.animationProperty.value;
-  const property = animationProperties[key];
-  const frames = state.animation.keyframes[key] || [];
-  controls.keyframeSummary.textContent = frames.length
-    ? `${property.label}: ${frames.map(item => `${item.frame + 1} (${Math.round(item.value * 100) / 100})`).join(", ")}`
-    : `No ${property.label.toLowerCase()} keyframes yet.`;
+  const frames = state.animation.keyframes
+    .filter(item => item.frame < getAnimationLength())
+    .map(item => item.frame + 1);
+  if (state.animation.dirty) {
+    controls.keyframeSummary.textContent = "Unsaved editor changes at this frame. Capture them or enable Auto-key.";
+  } else if (frames.length) {
+    controls.keyframeSummary.textContent = `Full-state keyframes: ${frames.join(", ")}. Every editable tool is included.`;
+  } else {
+    controls.keyframeSummary.textContent = "No keyframes yet. Edit anything above, then capture the full state.";
+  }
 }
 
 function renderTimelineMarkers() {
   controls.timelineMarkers.replaceChildren();
   const length = getAnimationLength();
   const denominator = Math.max(1, length - 1);
-  let markerIndex = 0;
 
-  for (const [key, frames] of Object.entries(state.animation.keyframes)) {
-    for (const item of frames) {
-      if (item.frame >= length) continue;
-      const marker = document.createElement("button");
-      marker.type = "button";
-      marker.className = "timeline-marker";
-      marker.classList.toggle(
-        "selected",
-        key === controls.animationProperty.value && item.frame === state.animation.frame
-      );
-      marker.style.left = `${(item.frame / denominator) * 100}%`;
-      marker.style.top = `${7 + (markerIndex % 3) * 7}px`;
-      marker.dataset.property = key;
-      marker.dataset.frame = item.frame;
-      marker.title = `${animationProperties[key].label}, frame ${item.frame + 1}: ${Math.round(item.value * 100) / 100}`;
-      marker.addEventListener("click", () => {
-        controls.animationProperty.value = key;
-        configureAnimationValueInput();
-        setAnimationFrame(item.frame);
-        updateKeyframeSummary();
-      });
-      controls.timelineMarkers.append(marker);
-      markerIndex++;
-    }
+  for (const item of state.animation.keyframes) {
+    if (item.frame >= length) continue;
+    const marker = document.createElement("button");
+    marker.type = "button";
+    marker.className = "timeline-marker";
+    marker.classList.toggle("selected", item.frame === state.animation.frame);
+    marker.style.left = `${(item.frame / denominator) * 100}%`;
+    marker.dataset.frame = item.frame;
+    marker.title = `Full editor state — frame ${item.frame + 1}`;
+    marker.addEventListener("click", () => {
+      pauseAnimation();
+      setAnimationFrame(item.frame);
+    });
+    controls.timelineMarkers.append(marker);
   }
 }
 
@@ -1506,8 +1533,7 @@ function updateTimelineMarkerSelection() {
   controls.timelineMarkers.querySelectorAll(".timeline-marker").forEach(marker => {
     marker.classList.toggle(
       "selected",
-      marker.dataset.property === controls.animationProperty.value
-        && parseInt(marker.dataset.frame, 10) === state.animation.frame
+      parseInt(marker.dataset.frame, 10) === state.animation.frame
     );
   });
 }
@@ -1517,7 +1543,7 @@ function toggleAnimationPlayback() {
     pauseAnimation();
     return;
   }
-  if (!state.image) return;
+  if (!state.image || !state.animation.keyframes.length) return;
   state.animation.playing = true;
   state.animation.lastTime = performance.now();
   state.animation.accumulator = 0;
@@ -1579,27 +1605,37 @@ function getAnimationSequence() {
 }
 
 async function downloadSpriteSheet() {
-  if (!state.image) return;
+  if (!state.image || !state.animation.keyframes.length) return;
   const wasPlaying = state.animation.playing;
   const previousFrame = state.animation.frame;
   const previousDirection = state.animation.direction;
   pauseAnimation();
 
   const sequence = getAnimationSequence();
-  const { width, height } = getTargetSize();
   const maxDimension = 8192;
-  const columns = Math.max(1, Math.min(sequence.length, Math.floor(maxDimension / width)));
-  const rows = Math.ceil(sequence.length / columns);
+  let cellWidth = 1;
+  let cellHeight = 1;
 
-  if (rows * height > maxDimension) {
+  for (const frame of sequence) {
+    setAnimationFrame(frame, false);
+    drawSource();
+    renderOutput();
+    cellWidth = Math.max(cellWidth, cleanOutputCanvas.width);
+    cellHeight = Math.max(cellHeight, cleanOutputCanvas.height);
+  }
+
+  const columns = Math.max(1, Math.min(sequence.length, Math.floor(maxDimension / cellWidth)));
+  const rows = Math.ceil(sequence.length / columns);
+  if (columns < 1 || rows * cellHeight > maxDimension) {
     window.alert("This sprite sheet is too large. Reduce the frame count or output size.");
+    state.animation.direction = previousDirection;
     setAnimationFrame(previousFrame);
     return;
   }
 
   const sheet = document.createElement("canvas");
-  sheet.width = columns * width;
-  sheet.height = rows * height;
+  sheet.width = columns * cellWidth;
+  sheet.height = rows * cellHeight;
   const sheetCtx = sheet.getContext("2d");
   sheetCtx.imageSmoothingEnabled = false;
 
@@ -1607,7 +1643,11 @@ async function downloadSpriteSheet() {
     setAnimationFrame(frame, false);
     drawSource();
     renderOutput();
-    sheetCtx.drawImage(cleanOutputCanvas, (index % columns) * width, Math.floor(index / columns) * height);
+    const cellX = (index % columns) * cellWidth;
+    const cellY = Math.floor(index / columns) * cellHeight;
+    const x = cellX + Math.floor((cellWidth - cleanOutputCanvas.width) / 2);
+    const y = cellY + Math.floor((cellHeight - cleanOutputCanvas.height) / 2);
+    sheetCtx.drawImage(cleanOutputCanvas, x, y);
   });
 
   const blob = await new Promise(resolve => sheet.toBlob(resolve, "image/png"));
@@ -1678,6 +1718,7 @@ function resetSymmetry() {
     a: { x: 0.5, y: 0.0 },
     b: { x: 0.5, y: 1.0 }
   };
+  markAnimationEdited();
   renderOutput();
 }
 
@@ -1787,6 +1828,7 @@ sourceCanvas.addEventListener("pointerdown", event => {
     controls.alphaOn.checked = true;
     state.pickingAlpha = false;
     controls.pickAlphaBtn.classList.remove("active");
+    markAnimationEdited();
     renderOutput();
     return;
   }
@@ -1825,12 +1867,14 @@ sourceCanvas.addEventListener("pointermove", event => {
     state.crop = resizeCropFromDrag(drag, p);
   }
 
+  markAnimationEdited(false);
   drawSource();
   renderOutput();
 });
 
 sourceCanvas.addEventListener("pointerup", () => {
   state.cropDrag = null;
+  commitAutoKeyIfNeeded();
 });
 
 outputOverlay.addEventListener("pointerdown", event => {
@@ -1841,6 +1885,7 @@ outputOverlay.addEventListener("pointerdown", event => {
   state.outputDrag = target;
   setOutputPoint(p, target);
   outputOverlay.setPointerCapture(event.pointerId);
+  markAnimationEdited(false);
   renderOutput();
 });
 
@@ -1848,11 +1893,13 @@ outputOverlay.addEventListener("pointermove", event => {
   if (!state.outputDrag) return;
   const p = pointerToOutputGrid(event);
   setOutputPoint(p, state.outputDrag);
+  markAnimationEdited(false);
   renderOutput();
 });
 
 outputOverlay.addEventListener("pointerup", () => {
   state.outputDrag = null;
+  commitAutoKeyIfNeeded();
 });
 
 function makeCropRect(a, b) {
@@ -1895,6 +1942,7 @@ controls.editSymmetryBtn.addEventListener("click", () => {
   }
   controls.editSymmetryBtn.classList.toggle("active", state.editSymmetry);
   controls.editLightBtn.classList.toggle("active", state.editLight);
+  markAnimationEdited();
   renderOutput();
 });
 
@@ -1906,6 +1954,7 @@ controls.editLightBtn.addEventListener("click", () => {
   }
   controls.editLightBtn.classList.toggle("active", state.editLight);
   controls.editSymmetryBtn.classList.toggle("active", state.editSymmetry);
+  markAnimationEdited();
   renderOutput();
 });
 
@@ -1949,12 +1998,9 @@ controls.animationFrameNumber.addEventListener("input", () => {
   pauseAnimation();
   setAnimationFrame((parseInt(controls.animationFrameNumber.value, 10) || 1) - 1);
 });
-controls.animationProperty.addEventListener("input", () => {
-  configureAnimationValueInput();
-  updateKeyframeSummary();
-  renderTimelineMarkers();
+controls.animationAutoKey.addEventListener("input", () => {
+  if (controls.animationAutoKey.checked && state.animation.dirty) setAnimationKeyframe();
 });
-controls.animationValue.addEventListener("input", () => setSelectedAnimationValue(controls.animationValue.value));
 
 Object.values(controls).forEach(control => {
   if (!control || control.type === "file") return;
@@ -1974,6 +2020,7 @@ Object.values(controls).forEach(control => {
         ? normalizeCrop({ x: cx - side / 2, y: cy - side / 2, w: side, h: side, angle: crop.angle || 0 })
         : normalizeCrop(crop);
     }
+    if (isAnimatableControl(control)) markAnimationEdited();
     drawSource();
     renderOutput();
   });
