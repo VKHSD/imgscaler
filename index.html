@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Image Scaler Lab</title>
-  <link rel="stylesheet" href="styles.css?v=20260728-fullstate-animation">
+  <link rel="stylesheet" href="styles.css?v=20260728-vertical-sheet">
 </head>
 <body>
   <header class="topbar">
@@ -235,6 +235,14 @@
           </select>
         </label>
         <label>
+          Sheet layout
+          <select id="sheetLayout">
+            <option value="vertical" selected>Vertical</option>
+            <option value="horizontal">Horizontal</option>
+            <option value="packed">Packed grid</option>
+          </select>
+        </label>
+        <label>
           Interpolation
           <select id="animationInterpolation">
             <option value="smooth">Smooth</option>
@@ -275,6 +283,6 @@
     </div>
   </section>
 
-  <script src="app.js?v=20260728-fullstate-animation"></script>
+  <script src="app.js?v=20260728-vertical-sheet"></script>
 </body>
 </html>
