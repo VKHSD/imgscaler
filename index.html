@@ -4,15 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Image Scaler Lab</title>
-  <link rel="stylesheet" href="styles.css?v=20260716-rotatecrop">
+  <link rel="stylesheet" href="styles.css?v=20260728-animation">
 </head>
 <body>
   <header class="topbar">
-    <div>
+    <div class="brand">
       <h1>Image Scaler Lab</h1>
-      <p>Crop, scale, clean alpha, mirror, shade, and export tiny game-ready images.</p>
+      <p>Build tiny game-ready images and animated sprite sheets.</p>
     </div>
-    <button id="downloadBtn" class="primary">Download PNG</button>
+    <div class="mode-switch" aria-label="Editor mode">
+      <button id="imageModeBtn" class="mode-button active">Image</button>
+      <button id="animationModeBtn" class="mode-button">Animate</button>
+    </div>
+    <div class="top-actions">
+      <button id="downloadSpriteBtn" class="animation-only">Download sheet</button>
+      <button id="downloadBtn" class="primary">Download PNG</button>
+    </div>
   </header>
 
   <div class="app-grid">
@@ -57,7 +64,14 @@
     </main>
 
     <aside class="toolbox">
-    <section>
+    <nav id="toolTabs" class="tool-tabs" aria-label="Image tools">
+      <button class="tool-tab active" data-tool="crop">Crop</button>
+      <button class="tool-tab" data-tool="size">Size</button>
+      <button class="tool-tab" data-tool="cleanup">Cleanup</button>
+      <button class="tool-tab" data-tool="effects">Effects</button>
+    </nav>
+
+    <section class="tool-section active" data-tool-panel="crop">
       <h3>Crop</h3>
       <div class="control-row">
         <button id="cropBtn" class="toggle active">Edit crop</button>
@@ -74,7 +88,7 @@
       <button id="resetToolsBtn" class="danger">Reset tools</button>
     </section>
 
-    <section>
+    <section class="tool-section" data-tool-panel="size">
       <h3>Size</h3>
       <div class="field-grid">
         <label>
@@ -104,7 +118,7 @@
       </label>
     </section>
 
-    <section>
+    <section class="tool-section" data-tool-panel="cleanup">
       <h3>Cleanup</h3>
       <div class="control-row">
         <button id="pickAlphaBtn" class="toggle">Pick alpha color</button>
@@ -136,7 +150,7 @@
       </label>
     </section>
 
-    <section>
+    <section class="tool-section" data-tool-panel="effects">
       <h3>Effects</h3>
       <label class="switch">
         <input id="edgeDetect" type="checkbox">
@@ -160,12 +174,20 @@
       </div>
       <label class="switch">
         <input id="seamlessOn" type="checkbox">
-        <span>Experimental seamless tile</span>
+        <span>Seamless tile</span>
+      </label>
+      <label>
+        Tile smoothing
+        <select id="seamAlgorithm">
+          <option value="crossfade">Crossfade (gentle)</option>
+          <option value="reconcile">Edge reconcile (strong)</option>
+        </select>
       </label>
       <label>
         Seam blend
         <input id="seamBlend" class="drag-number" type="number" min="1" max="50" value="18">
       </label>
+      <p id="seamAlgorithmNote" class="control-note">Softly overlaps wrapped edge bands.</p>
       <label class="switch">
         <input id="shadeOn" type="checkbox">
         <span>Fake lighting</span>
@@ -176,9 +198,100 @@
         <input id="lightStrength" class="drag-number" type="number" min="-100" max="100" value="34">
       </label>
     </section>
+
+    <section id="animationPanel" class="animation-panel">
+      <div class="animation-title">
+        <div>
+          <h3>Animation</h3>
+          <p>Keyframe effect and transform values.</p>
+        </div>
+        <span id="animationStatus" class="status-pill">Frame 1 / 16</span>
+      </div>
+
+      <div class="field-grid three">
+        <label>
+          FPS
+          <input id="animationFps" class="drag-number" type="number" min="1" max="60" value="8">
+        </label>
+        <label>
+          Frames
+          <input id="animationLength" class="drag-number" type="number" min="2" max="240" value="16">
+        </label>
+        <label>
+          Playback
+          <select id="animationLoop">
+            <option value="loop">Loop</option>
+            <option value="boomerang">Boomerang</option>
+          </select>
+        </label>
+      </div>
+
+      <label>
+        Interpolation
+        <select id="animationInterpolation">
+          <option value="smooth">Smooth</option>
+          <option value="linear">Linear</option>
+          <option value="hold">Hold</option>
+        </select>
+      </label>
+
+      <div class="playback-row">
+        <button id="playAnimationBtn" class="primary">Play</button>
+        <button id="restartAnimationBtn">Restart</button>
+      </div>
+
+      <div class="timeline">
+        <div id="timelineTrack" class="timeline-track">
+          <div id="timelineMarkers" class="timeline-markers"></div>
+        </div>
+        <input id="animationFrame" type="range" min="0" max="15" value="0">
+        <div class="timeline-labels">
+          <span>1</span>
+          <span id="timelineEndLabel">16</span>
+        </div>
+      </div>
+
+      <div class="keyframe-editor">
+        <label>
+          Animated property
+          <select id="animationProperty">
+            <option value="cropX">Crop X</option>
+            <option value="cropY">Crop Y</option>
+            <option value="cropAngle">Crop angle</option>
+            <option value="lightX">Light X</option>
+            <option value="lightY">Light Y</option>
+            <option value="lightStrength">Light strength</option>
+            <option value="seamBlend">Seam blend</option>
+            <option value="edgeStrength">Edge strength</option>
+            <option value="alphaTolerance">Alpha tolerance</option>
+          </select>
+        </label>
+        <div class="field-grid">
+          <label>
+            Current value
+            <input id="animationValue" class="drag-number" type="number" value="0">
+          </label>
+          <label>
+            Current frame
+            <input id="animationFrameNumber" class="drag-number" type="number" min="1" max="16" value="1">
+          </label>
+        </div>
+        <div class="control-row">
+          <button id="addKeyframeBtn" class="primary">Set keyframe</button>
+          <button id="deleteKeyframeBtn">Delete keyframe</button>
+        </div>
+        <p id="keyframeSummary" class="control-note">No keyframes yet.</p>
+      </div>
+
+      <div class="animation-help">
+        <strong>Workflow</strong>
+        <span>Pick a property, set its value, move the playhead, and set another keyframe.</span>
+        <span>Boomerang adds the return trip to previews and exported sheets.</span>
+      </div>
+    </section>
     </aside>
   </div>
 
-  <script src="app.js?v=20260716-rotatecrop"></script>
+  <script src="app.js?v=20260728-animation"></script>
 </body>
 </html>
