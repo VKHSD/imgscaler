@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Image Scaler Lab</title>
-  <link rel="stylesheet" href="styles.css?v=20260728-animation">
+  <link rel="stylesheet" href="styles.css?v=20260728-fullstate-animation">
 </head>
 <body>
   <header class="topbar">
@@ -199,16 +199,26 @@
       </label>
     </section>
 
-    <section id="animationPanel" class="animation-panel">
+    </aside>
+  </div>
+
+  <section id="animationDock" class="animation-dock" aria-label="Animation timeline">
+    <div class="animation-dock-left">
       <div class="animation-title">
         <div>
-          <h3>Animation</h3>
-          <p>Keyframe effect and transform values.</p>
+          <h3>Animation timeline</h3>
+          <p>Edit the real tools above, then capture the entire state.</p>
         </div>
         <span id="animationStatus" class="status-pill">Frame 1 / 16</span>
       </div>
+      <div class="playback-row">
+        <button id="playAnimationBtn" class="primary">Play</button>
+        <button id="restartAnimationBtn">Restart</button>
+      </div>
+    </div>
 
-      <div class="field-grid three">
+    <div class="animation-dock-center">
+      <div class="animation-settings">
         <label>
           FPS
           <input id="animationFps" class="drag-number" type="number" min="1" max="60" value="8">
@@ -224,20 +234,14 @@
             <option value="boomerang">Boomerang</option>
           </select>
         </label>
-      </div>
-
-      <label>
-        Interpolation
-        <select id="animationInterpolation">
-          <option value="smooth">Smooth</option>
-          <option value="linear">Linear</option>
-          <option value="hold">Hold</option>
-        </select>
-      </label>
-
-      <div class="playback-row">
-        <button id="playAnimationBtn" class="primary">Play</button>
-        <button id="restartAnimationBtn">Restart</button>
+        <label>
+          Interpolation
+          <select id="animationInterpolation">
+            <option value="smooth">Smooth</option>
+            <option value="linear">Linear</option>
+            <option value="hold">Hold</option>
+          </select>
+        </label>
       </div>
 
       <div class="timeline">
@@ -250,48 +254,27 @@
           <span id="timelineEndLabel">16</span>
         </div>
       </div>
+    </div>
 
-      <div class="keyframe-editor">
+    <div class="animation-dock-right">
+      <div class="frame-field">
         <label>
-          Animated property
-          <select id="animationProperty">
-            <option value="cropX">Crop X</option>
-            <option value="cropY">Crop Y</option>
-            <option value="cropAngle">Crop angle</option>
-            <option value="lightX">Light X</option>
-            <option value="lightY">Light Y</option>
-            <option value="lightStrength">Light strength</option>
-            <option value="seamBlend">Seam blend</option>
-            <option value="edgeStrength">Edge strength</option>
-            <option value="alphaTolerance">Alpha tolerance</option>
-          </select>
+          Current frame
+          <input id="animationFrameNumber" class="drag-number" type="number" min="1" max="16" value="1">
         </label>
-        <div class="field-grid">
-          <label>
-            Current value
-            <input id="animationValue" class="drag-number" type="number" value="0">
-          </label>
-          <label>
-            Current frame
-            <input id="animationFrameNumber" class="drag-number" type="number" min="1" max="16" value="1">
-          </label>
-        </div>
-        <div class="control-row">
-          <button id="addKeyframeBtn" class="primary">Set keyframe</button>
-          <button id="deleteKeyframeBtn">Delete keyframe</button>
-        </div>
-        <p id="keyframeSummary" class="control-note">No keyframes yet.</p>
+        <label class="switch auto-key-switch">
+          <input id="animationAutoKey" type="checkbox">
+          <span>Auto-key edits</span>
+        </label>
       </div>
-
-      <div class="animation-help">
-        <strong>Workflow</strong>
-        <span>Pick a property, set its value, move the playhead, and set another keyframe.</span>
-        <span>Boomerang adds the return trip to previews and exported sheets.</span>
+      <div class="control-row">
+        <button id="addKeyframeBtn" class="primary">Capture full state</button>
+        <button id="deleteKeyframeBtn">Delete keyframe</button>
       </div>
-    </section>
-    </aside>
-  </div>
+      <p id="keyframeSummary" class="control-note">No keyframe here. Edit anything, then capture it.</p>
+    </div>
+  </section>
 
-  <script src="app.js?v=20260728-animation"></script>
+  <script src="app.js?v=20260728-fullstate-animation"></script>
 </body>
 </html>
