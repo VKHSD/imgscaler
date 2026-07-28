@@ -333,23 +333,6 @@ canvas {
   color: var(--accent);
 }
 
-body.animation-mode .tool-tabs,
-body.animation-mode .toolbox .tool-section {
-  display: none;
-}
-
-.toolbox .animation-panel {
-  display: none;
-}
-
-body.animation-mode .toolbox {
-  grid-template-rows: minmax(0, 1fr);
-}
-
-body.animation-mode .toolbox .animation-panel {
-  display: grid;
-}
-
 .control-row,
 .field-grid {
   display: grid;
@@ -422,6 +405,60 @@ input[type="color"] {
   line-height: 1.35;
 }
 
+.animation-dock {
+  position: fixed;
+  z-index: 40;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: none;
+  grid-template-columns: 230px minmax(0, 1fr) 350px;
+  gap: 0.75rem;
+  height: 220px;
+  padding: 0.75rem clamp(0.75rem, 1.5vw, 1.25rem);
+  border-top: 1px solid rgba(110, 231, 183, 0.28);
+  background: rgba(13, 15, 18, 0.97);
+  box-shadow: 0 -16px 50px rgba(0, 0, 0, 0.36);
+  backdrop-filter: blur(18px);
+}
+
+body.animation-mode .animation-dock {
+  display: grid;
+}
+
+body.animation-mode .app-grid {
+  height: calc(100vh - 284px);
+}
+
+.animation-dock-left,
+.animation-dock-center,
+.animation-dock-right {
+  min-width: 0;
+  padding: 0.7rem;
+  border: 1px solid rgba(255, 255, 255, 0.065);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.animation-dock-left,
+.animation-dock-right {
+  display: grid;
+  align-content: start;
+  gap: 0.75rem;
+}
+
+.animation-dock-center {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.6rem;
+}
+
+.animation-dock-left .animation-title {
+  display: grid;
+  justify-items: start;
+  gap: 0.45rem;
+}
+
 .animation-title,
 .timeline-labels {
   display: flex;
@@ -446,9 +483,27 @@ input[type="color"] {
   font-size: 0.72rem;
 }
 
+.status-pill.dirty {
+  border-color: rgba(251, 191, 36, 0.45);
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.1);
+}
+
+.status-pill.keyed {
+  border-color: rgba(56, 189, 248, 0.42);
+  color: #7dd3fc;
+  background: rgba(56, 189, 248, 0.1);
+}
+
 .playback-row {
   display: grid;
   grid-template-columns: 1.3fr 1fr;
+  gap: 0.5rem;
+}
+
+.animation-settings {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.5rem;
 }
 
@@ -505,24 +560,20 @@ input[type="color"] {
   font-size: 0.68rem;
 }
 
-.keyframe-editor,
-.animation-help {
+.frame-field {
   display: grid;
-  gap: 0.55rem;
-  padding: 0.65rem;
-  border: 1px solid rgba(255, 255, 255, 0.065);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.025);
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.65rem;
 }
 
-.animation-help {
-  color: var(--muted);
-  font-size: 0.75rem;
-  line-height: 1.35;
+.auto-key-switch {
+  min-height: 2.6rem;
+  white-space: nowrap;
 }
 
-.animation-help strong {
-  color: var(--text);
+.animation-dock-right .control-row {
+  grid-template-columns: 1.2fr 1fr;
 }
 
 @media (max-width: 1200px) {
@@ -554,8 +605,18 @@ input[type="color"] {
     overflow: visible;
   }
 
-  body.animation-mode .toolbox {
+  body.animation-mode .app-grid {
+    height: auto;
+  }
+
+  .animation-dock {
+    position: static;
     grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  body.animation-mode .animation-dock {
+    display: grid;
   }
 }
 
@@ -584,5 +645,13 @@ input[type="color"] {
 
   .field-grid.three {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .animation-settings {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .frame-field {
+    grid-template-columns: 1fr;
   }
 }
